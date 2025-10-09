@@ -1,6 +1,6 @@
 // scripts/main.js
 (function () {
-  const BUILD = "main.js v2025-10-09h";
+  const BUILD = "main.js v2025-10-09i";
   console.log("[Springwalk]", BUILD);
 
   // ===== DOM helpers =====
@@ -169,25 +169,64 @@
     return out.trim();
   }
 
+  // ===== Tone helpers (multiselect) =====
+  function getSelectedTones() {
+    return Array.from($("toneMulti").selectedOptions).map(o => o.value);
+  }
+  function setSelectedTones(values) {
+    const opts = Array.from($("toneMulti").options);
+    const set = new Set((values || []).map(v => v.toLowerCase()));
+    opts.forEach(o => { o.selected = set.has(o.value.toLowerCase()); });
+    // pokud nic není, nech aspoň "profesionální"
+    if (!Array.from($("toneMulti").selectedOptions).length) {
+      opts.find(o => o.value === "profesionální").selected = true;
+    }
+  }
+
+  // ===== Length helpers =====
+  // id -> bucket (pro stávající backend) + hint (pro budoucnost)
+  const LENGTH_MAP = {
+    vk: { bucket: "krátká",  min: 300,  max: 500  },
+    k:  { bucket: "krátká",  min: 400,  max: 800  },
+    s:  { bucket: "střední", min: 800,  max: 1200 },
+    d:  { bucket: "dlouhá",  min: 1200, max: 1800 },
+    vd: { bucket: "dlouhá",  min: 1800, max: 2400 },
+  };
+  function getLengthSelection() {
+    const id = $("length").value || "k";
+    return { id, ...(LENGTH_MAP[id] || LENGTH_MAP["k"]) };
+  }
+
   // ===== Presets helpers =====
   function applyPresetObject(p) {
     if (!p) return;
-    const toneSel = $("tone");
-    const lenSel  = $("length");
-    if ([...toneSel.options].some(o => o.value === p.tone_of_voice)) toneSel.value = p.tone_of_voice;
-    if ([...lenSel.options].some(o => o.value === p.length_profile)) lenSel.value = p.length_profile;
+    // TOV – řetězec typu "profesionální + edukativní + pro management"
+    const tones = String(p.tone_of_voice || "").split("+").map(s => s.trim()).filter(Boolean);
+    setSelectedTones(tones);
+
+    // Délka – podporuj starý formát ("krátká") i nový ("vk|k|s|d|vd")
+    const lenId = (() => {
+      const raw = (p.length_profile || "").toLowerCase();
+      if (["vk","k","s","d","vd"].includes(raw)) return raw;
+      if (raw.includes("krátká")) return "k";
+      if (raw.includes("střední")) return "s";
+      if (raw.includes("dlouhá")) return "d";
+      return "k";
+    })();
+    $("length").value = lenId;
+
     $("presetName").value = p.name || "";
   }
 
   // ===== State =====
   let lastSuggestedTags = [];
 
-  // ===== Read form (včetně kombinovaného TOV a UTM linku) =====
+  // ===== Read form (TOV multiselect + length map + UTM link) =====
   function readForm() {
-    const baseTone = $("tone").value;
-    const extras = Array.from(document.querySelectorAll('input[name="toneExtra"]:checked'))
-      .map(el => el.value);
-    const toneCombined = [baseTone, ...extras].filter(Boolean).join(" + ");
+    const tones = getSelectedTones();
+    const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
+
+    const lengthSel = getLengthSelection(); // { id, bucket, min, max }
 
     const project = $("projectName").value || "Springwalk – MVP";
     const rawLink = $("linkUrl").value;
@@ -204,7 +243,10 @@
     return {
       project_name: project,
       tone: toneCombined,
-      length: $("length").value,
+      // legacy pole pro backend (bucket)
+      length: lengthSel.bucket,
+      // hint pro budoucí verze backendu (ignorováno, nevadí)
+      length_hint: { id: lengthSel.id, min: lengthSel.min, max: lengthSel.max },
       keywords: $("keywords").value,
       source_text: $("sourceText").value,
       link_url: finalLink
@@ -366,19 +408,24 @@
       }
     });
 
-    // PRESETS – uložit nový
+    // PRESETS – uložit nový (uloží KOMPLETNÍ kombinaci TOV + ID délky)
     $("btnSavePreset").addEventListener("click", async () => {
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
       const project = $("projectName").value || "Springwalk – MVP";
       const name = $("presetName").value.trim();
       if (!name) return alert("Zadej název presetu.");
+
+      const tones = getSelectedTones();
+      const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
+      const lenId = $("length").value || "k";
+
       try {
         await callPresets(SUPABASE_URL, SUPABASE_ANON_KEY, "POST", {
           project_name: project,
           channel: "LinkedIn",
           name,
-          tone_of_voice: $("tone").value,
-          length_profile: $("length").value,
+          tone_of_voice: toneCombined,  // celý string "a + b + c"
+          length_profile: lenId,        // ID vk|k|s|d|vd (při načtení zase vybereme)
           is_default: false
         });
         alert("Preset uložen.");
