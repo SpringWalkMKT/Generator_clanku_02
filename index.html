@@ -9,6 +9,10 @@
     pre#output { white-space: pre-wrap; word-wrap: break-word; }
     #drafts { white-space: pre-wrap; }
     #actions button { margin-right: 8px; }
+    fieldset { border:1px solid #ddd; padding:10px; margin:10px 0 }
+    legend { padding:0 6px; }
+    label.inline { display:inline-block; margin-right:8px; }
+    input[type="text"], input[type="url"], select, textarea { width: 100%; }
   </style>
 </head>
 <body>
@@ -19,33 +23,65 @@
       <input type="text" id="projectName" value="Springwalk – MVP" required />
     </label><br />
 
-    <label>Klíčová slova:<br />
-      <input type="text" id="keywords" placeholder="např. advokacie, právo, compliance" />
-    </label><br />
+    <fieldset>
+      <legend>Vstupy</legend>
+      <label>Klíčová slova:<br />
+        <input type="text" id="keywords" placeholder="např. advokacie, právo, compliance" />
+      </label><br />
+      <label>Zdrojový text / URL:<br />
+        <textarea id="sourceText" rows="5" placeholder="vložit tiskovou zprávu nebo článek"></textarea>
+      </label><br />
+      <label>Odkaz na web:<br />
+        <input type="url" id="linkUrl" placeholder="https://springwalk.cz" required />
+      </label><br />
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+        <label>Tone of Voice:<br />
+          <select id="tone">
+            <option value="profesionální" selected>Profesionální</option>
+            <option value="empatický">Empatický</option>
+            <option value="stručný">Stručný</option>
+          </select>
+        </label>
+        <label>Délka:<br />
+          <select id="length">
+            <option value="krátká" selected>Krátká</option>
+            <option value="střední">Střední</option>
+            <option value="dlouhá">Dlouhá</option>
+          </select>
+        </label>
+      </div>
+    </fieldset>
 
-    <label>Zdrojový text / URL:<br />
-      <textarea id="sourceText" rows="5" placeholder="vložit tiskovou zprávu nebo článek"></textarea>
-    </label><br />
+    <fieldset>
+      <legend>TOV presety</legend>
+      <div style="display:grid; grid-template-columns:1fr auto; gap:8px; align-items:end;">
+        <label>Název presetu<br />
+          <input type="text" id="presetName" placeholder="např. Stručný management" />
+        </label>
+        <button id="btnSavePreset" type="button">Uložit jako preset (LinkedIn)</button>
+      </div>
 
-    <label>Odkaz na web:<br />
-      <input type="url" id="linkUrl" placeholder="https://springwalk.cz" required />
-    </label><br />
+      <div style="display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:end; margin-top:8px">
+        <label>Vybrat preset<br />
+          <select id="presetSelect"><option value="">(načti presety)</option></select>
+        </label>
+        <button id="btnLoadPresets" type="button">Načíst presety</button>
+        <button id="btnApplyPreset" type="button">Použít preset</button>
+      </div>
+      <small>Presety jsou uloženy per projekt a kanál (zde: LinkedIn).</small>
+    </fieldset>
 
-    <label>Tone of Voice:<br />
-      <select id="tone">
-        <option value="profesionální" selected>Profesionální</option>
-        <option value="empatický">Empatický</option>
-        <option value="stručný">Stručný</option>
-      </select>
-    </label><br />
-
-    <label>Délka:<br />
-      <select id="length">
-        <option value="krátká" selected>Krátká</option>
-        <option value="střední">Střední</option>
-        <option value="dlouhá">Dlouhá</option>
-      </select>
-    </label><br />
+    <fieldset>
+      <legend>UTM</legend>
+      <label class="inline"><input type="checkbox" id="addUtm" checked /> Přidat UTM parametry do odkazu</label>
+      <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:8px">
+        <label>utm_source<br /><input type="text" id="utmSource" value="linkedin" /></label>
+        <label>utm_medium<br /><input type="text" id="utmMedium" value="organic" /></label>
+        <label>utm_campaign<br /><input type="text" id="utmCampaign" value="springwalk-mvp" /></label>
+        <label>utm_content<br /><input type="text" id="utmContent" placeholder="volitelné" /></label>
+        <label>utm_term<br /><input type="text" id="utmTerm" placeholder="volitelné" /></label>
+      </div>
+    </fieldset>
 
     <button id="btnGenerate" type="button">GENEROVAT LINKEDIN POST</button>
   </form>
@@ -68,9 +104,8 @@
   <button id="btnLoadDrafts" type="button">Načíst drafty</button>
   <div id="drafts"></div>
 
-  <!-- DŮLEŽITÉ: config dřív než main; query param = cache-busting -->
-  <script src="scripts/config.js?v=2025-10-09a"></script>
-  <script src="scripts/main.js?v=2025-10-09a"></script>
+  <script src="scripts/config.js?v=2025-10-09d"></script>
+  <script src="scripts/main.js?v=2025-10-09d"></script>
   <noscript>Pro použití této stránky povolte JavaScript.</noscript>
 </body>
 </html>
