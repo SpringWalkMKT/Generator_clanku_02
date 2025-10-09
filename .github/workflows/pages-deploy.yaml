@@ -3,12 +3,15 @@ name: Build & Deploy GitHub Pages (with config.js)
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'index.html'
+      - 'styles/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+  # volitelně: denní rebuild v 06:30 Praha (04:30 UTC)
+  schedule:
+    - cron: '30 4 * * *'
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref (tag/branch/SHA) to deploy"
-        required: false
-        default: "main"
 
 permissions:
   contents: read
@@ -16,7 +19,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: true
 
 jobs:
@@ -25,18 +28,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || 'main' }}
 
-      - name: Generate scripts/config.js from secrets
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Generate scripts/config.js from Secrets
         run: |
           mkdir -p scripts
-          cat > scripts/config.js << 'EOF'
+          cat > scripts/config.js <<'EOF'
           window.APP_CONFIG = {
             SUPABASE_URL: "${{ secrets.SUPABASE_URL }}",
             SUPABASE_ANON_KEY: "${{ secrets.SUPABASE_ANON_KEY }}"
           };
           EOF
+
+      # Volitelná kontrola – uvidíš, že existuje styles/main.css a nový config.js
+      - name: List files
+        run: |
+          ls -la
+          ls -la styles || true
+          ls -la scripts
+
+      # Pokud máš build-krok (např. minifikace), vlož ho sem.
+      # Pro čistý statický web není potřeba nic víc.
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
@@ -44,11 +58,11 @@ jobs:
           path: .
 
   deploy:
+    runs-on: ubuntu-latest
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
