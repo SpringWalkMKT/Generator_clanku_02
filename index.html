@@ -9,7 +9,7 @@
 <body>
   <h1>Generátor obsahu – Springwalk</h1>
 
-  <form id="generate-form">
+  <form id="generate-form" autocomplete="on">
     <label>Název projektu:<br>
       <input type="text" id="projectName" value="Springwalk – MVP" required />
     </label><br>
@@ -28,9 +28,9 @@
 
     <label>Tone of Voice:<br>
       <select id="tone">
-        <option value="profesionální">Profesionální</option>
+        <option value="profesionální" selected>Profesionální</option>
         <option value="empatický">Empatický</option>
-        <option value="stručný" selected>Stručný</option>
+        <option value="stručný">Stručný</option>
       </select>
     </label><br>
 
@@ -42,15 +42,16 @@
       </select>
     </label><br>
 
-    <button type="submit">GENEROVAT LINKEDIN POST</button>
+    <!-- DŮLEŽITÉ: type="button" -->
+    <button id="btnGenerate" type="button">GENEROVAT LINKEDIN POST</button>
   </form>
 
   <h2>Výstup:</h2>
   <pre id="output"></pre>
 
-  <!-- 1) config ze Secrets (generuje se v Action) -->
+  <!-- Musí být v tomto pořadí -->
   <script src="scripts/config.js"></script>
-  <!-- 2) hlavní logika -->
   <script src="scripts/main.js"></script>
+  <noscript>Pro použití této stránky povolte JavaScript.</noscript>
 </body>
 </html>
