@@ -466,4 +466,105 @@
             return;
           }
           box.textContent = rows
-            .map((r)
+            .map((r) => `[${r.created_at}] v${r.version} ${r.channel} (${r.status})\n${r.content}\n---`)
+            .join("\n");
+        } catch (e) {
+          console.error(e);
+          box.textContent = "❌ " + (e?.message || e);
+        } finally {
+          $("btnLoadDrafts").disabled = false;
+        }
+      });
+
+      // PRESETS – načíst
+      $("btnLoadPresets")?.addEventListener("click", async () => {
+        let cfg;
+        try {
+          cfg = getConfig();
+        } catch (e) {
+          alert("Chybí konfigurace.");
+          return;
+        }
+        const project = $("projectName")?.value || "Springwalk – MVP";
+        const sel = must($("presetSelect"), "presetSelect");
+        sel.innerHTML = `<option value="">(načítám…)</option>`;
+        try {
+          const list = await callPresets(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, "GET", {
+            project_name: project,
+            channel: "LinkedIn"
+          });
+          sel.innerHTML = "";
+          if (!list.length) {
+            sel.innerHTML = `<option value="">(žádné presety)</option>`;
+            return;
+          }
+          list.forEach((p) => {
+            const o = document.createElement("option");
+            o.value = JSON.stringify(p);
+            o.textContent = `${p.name}${p.is_default ? " ★" : ""}`;
+            sel.appendChild(o);
+          });
+          const def = list.find((p) => p.is_default) || list[0];
+          sel.value = JSON.stringify(def);
+          applyPresetObject(def);
+        } catch (e) {
+          console.warn("[Presets] GET selhal:", e.message || e);
+          sel.innerHTML = `<option value="">(presets API nedostupné)</option>`;
+        }
+      });
+
+      // PRESETS – použít
+      $("btnApplyPreset")?.addEventListener("click", () => {
+        const sel = $("presetSelect");
+        if (!sel?.value) return;
+        try {
+          const p = JSON.parse(sel.value);
+          applyPresetObject(p);
+        } catch (e) {
+          console.warn("Chybná volba presetu:", e);
+        }
+      });
+
+      // PRESETS – uložit
+      $("btnSavePreset")?.addEventListener("click", async () => {
+        let cfg;
+        try {
+          cfg = getConfig();
+        } catch (e) {
+          alert("Chybí konfigurace.");
+          return;
+        }
+        const project = $("projectName")?.value || "Springwalk – MVP";
+        const name = ($("presetName")?.value || "").trim();
+        if (!name) {
+          alert("Zadej název presetu.");
+          return;
+        }
+
+        const tones = getSelectedTones();
+        const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
+        const lenId = $("length")?.value || "k";
+
+        try {
+          await callPresets(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, "POST", {
+            project_name: project,
+            channel: "LinkedIn",
+            name,
+            tone_of_voice: toneCombined,
+            length_profile: lenId,
+            is_default: false
+          });
+          alert("Preset uložen.");
+        } catch (e) {
+          console.warn("[Presets] POST selhal:", e.message || e);
+          alert("❌ Uložení presetu selhalo (presets API nedostupné?).");
+        }
+      });
+
+      console.log("%c[Springwalk] UI wired OK", "color:#0a0;");
+    } catch (e) {
+      console.error("[Boot] Fatal:", e);
+      alert("❌ Inicializace UI selhala: " + (e?.message || e));
+    }
+  });
+})();
