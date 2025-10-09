@@ -5,16 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Springwalk Content Manager</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='12'%3ESW%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles/main.css" />
   <style>
-    body { max-width: 900px; margin: 24px auto; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.5; }
-    pre#output { white-space: pre-wrap; word-wrap: break-word; border: 1px solid #ddd; padding: 10px; border-radius: 6px; min-height: 120px; background:#fafafa; }
-    textarea, input[type="text"], input[type="url"], select { width: 100%; }
+    body { max-width: 980px; margin: 24px auto; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.5; }
     fieldset { border:1px solid #e5e5e5; padding:10px; margin:12px 0; border-radius:8px; }
     legend { padding:0 6px; font-weight:600; color:#444; }
     label.inline { display:inline-block; margin-right:12px; }
-    #actions button { margin-right: 8px; }
-    #drafts, #checks { white-space: pre-wrap; }
+    input[type="text"], input[type="url"], select, textarea { width: 100%; }
+    pre#output, pre#outputBlog { white-space: pre-wrap; word-wrap: break-word; border: 1px solid #ddd; padding: 10px; border-radius: 6px; min-height: 120px; background:#fafafa; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .grid5 { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
+    .muted { color:#666; font-size:12px; }
+    #igAltWrap { display:none; }
+    #blogWrap { display:none; }
   </style>
 </head>
 <body>
@@ -26,6 +28,15 @@
     </label>
 
     <fieldset>
+      <legend>Kanál</legend>
+      <label class="inline"><input type="radio" name="channel" value="LinkedIn" checked> LinkedIn</label>
+      <label class="inline"><input type="radio" name="channel" value="Facebook"> Facebook</label>
+      <label class="inline"><input type="radio" name="channel" value="Instagram"> Instagram</label>
+      <label class="inline"><input type="radio" name="channel" value="Blog"> Blog</label>
+      <div class="muted">Přepnutí ovlivní generování, validaci, presety i ukládání draftů.</div>
+    </fieldset>
+
+    <fieldset>
       <legend>Vstupy</legend>
       <label>Klíčová slova:<br />
         <input type="text" id="keywords" placeholder="např. advokacie, právo, compliance" />
@@ -33,11 +44,11 @@
       <label>Zdrojový text / URL (podklad pro generování):<br />
         <textarea id="sourceText" rows="6" placeholder="vložit tiskovou zprávu nebo článek"></textarea>
       </label><br />
-      <label>Odkaz na web (vloží se jako holá URL):<br />
+      <label>Odkaz na web (vloží se jako holá URL – IG: jen 'link v bio'):<br />
         <input type="url" id="linkUrl" placeholder="https://springwalk.cz" required />
       </label><br />
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+      <div class="grid2">
         <label>🎯 Délka výstupu:<br />
           <select id="length">
             <option value="vk" data-min="300"  data-max="500">Velmi krátká (300–500)</option>
@@ -48,7 +59,7 @@
           </select>
         </label>
 
-        <label>🗣️ Tone of Voice (můžeš vybrat více – Ctrl/Cmd + klik):<br />
+        <label>🗣️ Tone of Voice (vyber více – Ctrl/Cmd + klik):<br />
           <select id="toneMulti" multiple size="10">
             <option value="profesionální" selected>profesionální</option>
             <option value="formální">formální</option>
@@ -67,47 +78,66 @@
           </select>
         </label>
       </div>
-      <small>Vybrané TOV pošleme modelu jako kombinaci, např. „profesionální + edukativní + pro management“ (střídmě, v souladu s ČAK).</small>
+      <div class="muted">TOV pošleme jako kombinaci „a + b + c“ (v duchu ČAK: střídmé, bez garancí).</div>
     </fieldset>
 
     <fieldset>
-      <legend>TOV presety</legend>
-      <div style="display:grid; grid-template-columns:1fr auto; gap:8px; align-items:end;">
+      <legend>TOV Presety (per kanál)</legend>
+      <div class="grid2">
         <label>Název presetu<br />
           <input type="text" id="presetName" placeholder="např. Stručný management" />
         </label>
-        <button id="btnSavePreset" type="button">Uložit jako preset (LinkedIn)</button>
+        <div>
+          <button id="btnSavePreset" type="button">Uložit preset</button>
+          <div class="muted">Uloží kombinaci TOV + délku pro zvolený kanál.</div>
+        </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:end; margin-top:8px">
+      <div class="grid2" style="align-items:end;">
         <label>Vybrat preset<br />
-          <select id="presetSelect"><option value="">(načti presety)</option></select>
+          <select id="presetSelect"><option value="">(Načti presety)</option></select>
         </label>
-        <button id="btnLoadPresets" type="button">Načíst presety</button>
-        <button id="btnApplyPreset" type="button">Použít preset</button>
+        <div>
+          <button id="btnLoadPresets" type="button">Načíst presety</button>
+          <button id="btnApplyPreset" type="button">Použít preset</button>
+        </div>
       </div>
-      <small>Presety jsou uloženy per projekt a kanál (zde: LinkedIn). Ukládá se kompletní kombinace TOV + zvolená délka.</small>
     </fieldset>
 
     <fieldset>
       <legend>UTM</legend>
       <label class="inline"><input type="checkbox" id="addUtm" checked> Přidat UTM parametry do odkazu</label>
       <label class="inline" style="margin-left:16px;"><input type="checkbox" id="utmAutoSync" checked> Auto-sync kampaně s názvem projektu</label>
-      <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:8px">
+      <div class="grid5" style="margin-top:8px">
         <label>utm_source<br /><input type="text" id="utmSource" value="linkedin" /></label>
         <label>utm_medium<br /><input type="text" id="utmMedium" value="organic" /></label>
         <label>utm_campaign<br /><input type="text" id="utmCampaign" value="springwalk-mvp" /></label>
         <label>utm_content<br /><input type="text" id="utmContent" placeholder="volitelné" /></label>
         <label>utm_term<br /><input type="text" id="utmTerm" placeholder="volitelné" /></label>
       </div>
+      <div class="muted">IG caption nebude obsahovat URL – použije „(link v bio)“. UTM se použije pro LI/FB/Blog.</div>
     </fieldset>
 
-    <button id="btnGenerate" type="button">GENEROVAT LINKEDIN POST</button>
+    <button id="btnGenerate" type="button">GENEROVAT</button>
   </form>
 
-  <h2>Výstup:</h2>
+  <h2>Výstup</h2>
+
+  <!-- LinkedIn / Facebook / Instagram (caption) -->
   <pre id="output">(zatím prázdné)</pre>
   <textarea id="outputEdit" rows="10" style="width:100%;display:none;"></textarea>
+
+  <!-- Instagram ALT text -->
+  <div id="igAltWrap">
+    <h3>Instagram ALT text</h3>
+    <pre id="igAlt">(vygeneruje se u IG)</pre>
+  </div>
+
+  <!-- Blog sekce -->
+  <div id="blogWrap">
+    <h3>Blog – náhled</h3>
+    <pre id="outputBlog"></pre>
+  </div>
 
   <div id="actions" style="margin:8px 0;">
     <button id="btnCopy" type="button">Zkopírovat</button>
@@ -116,16 +146,16 @@
     <button id="btnSaveDraft" type="button">Uložit jako nový draft</button>
   </div>
 
-  <h2>Kontroly:</h2>
+  <h2>Kontroly</h2>
   <div id="checks"></div>
 
-  <h2>Drafty:</h2>
+  <h2>Drafty</h2>
   <button id="btnLoadDrafts" type="button">Načíst drafty</button>
   <div id="drafts"></div>
 
-  <!-- Config dřív než main; query param kvůli cache -->
-  <script src="scripts/config.js?v=auto"></script>
-  <script src="scripts/main.js?v=auto"></script>
+  <!-- Config dřív než main; query param pro cache-bust -->
+  <script src="scripts/config.js?v=milestone-a-1"></script>
+  <script src="scripts/main.js?v=milestone-a-1"></script>
   <noscript>Pro použití této stránky povolte JavaScript.</noscript>
 </body>
 </html>
