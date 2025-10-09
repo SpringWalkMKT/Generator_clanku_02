@@ -304,12 +304,13 @@
 
     $("btnApplyPreset").addEventListener("click", () => {
       const sel = $("presetSelect");
-      if (!sel.value) return alert("Vyber preset.");
+      if (!sel.value) return;
       try {
         const p = JSON.parse(sel.value);
         $("tone").value = p.tone_of_voice;
-        $("length").value = p.length_profile;
-        alert(`Použit preset: ${p.name}`);
+        $("length").value = p.length_profile;    
+        // volitelně doplnit název do pole:
+        $("presetName").value = p.name || "";
       } catch {
         alert("❌ Chybná volba presetu.");
       }
