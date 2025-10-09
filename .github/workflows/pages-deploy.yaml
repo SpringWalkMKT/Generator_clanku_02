@@ -3,7 +3,12 @@ name: Build & Deploy GitHub Pages (with config.js)
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (tag/branch/SHA) to deploy"
+        required: false
+        default: "main"
 
 permissions:
   contents: read
@@ -20,8 +25,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
 
-      # Vygeneruje /scripts/config.js z GitHub Secrets
       - name: Generate scripts/config.js from secrets
         run: |
           mkdir -p scripts
@@ -32,7 +38,6 @@ jobs:
           };
           EOF
 
-      # Zabalí web pro Pages
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
