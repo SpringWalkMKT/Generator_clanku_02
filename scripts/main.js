@@ -30,20 +30,52 @@
   async function copyToClipboard(text) {
     try { await navigator.clipboard.writeText(text); alert("Zkopírováno do schránky."); }
     catch { alert("Nepodařilo se kopírovat. Zkopíruj ručně."); }
+function shortenTo(content, target = 900, preserveLink = "", enforceTag = "#springwalk") {
+  // 1) Normalizace textu
+  let body = String(content || "").trim()
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n");
+
+  // 2) Odstraň stávající #springwalk (aby nebyly duplicity), pak ho přidáme na KONEC
+  if (enforceTag) {
+    const tagRe = new RegExp(`(^|\\s)${enforceTag}(\\s|$)`, "gi");
+    body = body.replace(tagRe, " ").replace(/\s{2,}/g, " ").trim();
   }
-  function shortenTo(content, target = 900, preserveLink = "", enforceTag = "#springwalk") {
-    let out = String(content || "");
-    if (!out.includes(enforceTag)) out = enforceTag + "\n" + out;
-    if (preserveLink && !out.includes(preserveLink)) out += `\n\n${preserveLink}`;
-    if (out.length <= target) return out;
-    let cut = out.slice(0, target);
+
+  // 3) Odstraň konkrétní link (pokud je v textu), přidáme ho na KONEC
+  if (preserveLink) {
+    const linkEsc = preserveLink.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const mdLinkRe = new RegExp(`\\[([^\\]]+)\\]\\(${linkEsc}\\)`, "gi"); // [text](url)
+    body = body.replace(mdLinkRe, "")
+               .replace(new RegExp(linkEsc, "gi"), "")
+               .trim();
+  }
+
+  // 4) Rezerva pro "ocásek" (hashtag + link na konci)
+  const tailParts = [];
+  if (enforceTag) tailParts.push(enforceTag);
+  if (preserveLink) tailParts.push(preserveLink);
+  const tail = tailParts.join("\n");
+  const reserve = tail ? tail.length + 4 : 0; // 2x newline jako mezera
+
+  const maxBody = Math.max(0, target - reserve);
+
+  // 5) Chytré zkrácení těla
+  let trimmed = body;
+  if (trimmed.length > maxBody) {
+    let cut = trimmed.slice(0, maxBody);
     const lastStop = Math.max(cut.lastIndexOf("\n\n"), cut.lastIndexOf(". "));
-    if (lastStop > 200) cut = cut.slice(0, lastStop + 1);
-    out = cut.trim();
-    if (preserveLink && !out.includes(preserveLink)) out += `\n\n${preserveLink}`;
-    if (!out.includes(enforceTag)) out = enforceTag + "\n" + out;
-    return out;
+    if (lastStop > maxBody * 0.5) cut = cut.slice(0, lastStop + 1);
+    trimmed = cut.trim();
   }
+
+  // 6) Poskládej výsledný text + ocásek na KONEC
+  let out = trimmed;
+  if (tail) out = (out ? out + "\n\n" : "") + tail;
+
+  return out.trim();
+}
+
 
   // ---------- config ----------
   function getConfig() {
