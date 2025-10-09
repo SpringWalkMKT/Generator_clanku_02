@@ -1,0 +1,38 @@
+name: Deploy to GitHub Pages (with config.js)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Vytvoříme scripts/config.js z GitHub Secrets
+      - name: Generate scripts/config.js from secrets
+        run: |
+          mkdir -p scripts
+          cat > scripts/config.js << 'EOF'
+          window.APP_CONFIG = {
+            SUPABASE_URL: "${{ secrets.SUPABASE_URL }}",
+            SUPABASE_ANON_KEY: "${{ secrets.SUPABASE_ANON_KEY }}"
+          };
+          EOF
+          echo "Generated scripts/config.js:"
+          cat scripts/config.js | sed 's/${{ secrets.SUPABASE_ANON_KEY }}/***hidden*** /'
+
+      # Nasazení na GitHub Pages (bez build nástrojů)
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
