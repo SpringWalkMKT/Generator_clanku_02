@@ -1,6 +1,6 @@
 // scripts/main.js
 (function () {
-  const BUILD = "main.js v2025-10-09i";
+  const BUILD = "main.js v2025-10-09j";
   console.log("[Springwalk]", BUILD);
 
   // ===== DOM helpers =====
@@ -120,6 +120,7 @@
   // ===== Shorten (zachovat odstavce + tail na konci) =====
   const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+  // TAIL = jen hashtagy, žádný link (ten bude "v textu")
   function shortenTo(content, target = 900, link = "", enforceTag = "#springwalk", extraTags = []) {
     // 1) normalizace (ponech odstavce)
     let body = String(content || "")
@@ -133,20 +134,15 @@
       body = body.replace(tagRe, "$1").trim();
     }
 
-    // 3) odstranit konkrétní link (včetně Markdown odkazu) z těla
-    if (link) {
-      const linkEsc = escapeRegex(link);
-      const mdRe = new RegExp(`\\[([^\\]]+)\\]\\(${linkEsc}\\)`, "gi");
-      body = body.replace(mdRe, "").replace(new RegExp(linkEsc, "gi"), "").trim();
-      body = body.replace(/\n{3,}/g, "\n\n").trim();
-    }
+    // 3) (link se už nevynucuje do tailu, proto NIC nemažeme – link je součástí těla)
+    //    přesto sklidíme přebytečné prázdné řádky
+    body = body.replace(/\n{3,}/g, "\n\n").trim();
 
-    // 4) připrav tail: "#springwalk #tag1 #tag2 #tag3" + prázdný řádek + link
+    // 4) připrav tail: "#springwalk #tagy" (BEZ odkazu)
     const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
     const tagsLine = uniq([enforceTag, ...extraTags]).join(" ");
-    const tail = tagsLine + (link ? `\n\n${link}` : "");
+    const tail = tagsLine ? tagsLine : "";
     const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0; // + prázdný řádek mezi tělem a tail
-
     const maxBody = Math.max(0, target - reserve);
 
     // 5) zkrátit pouze tělo – preferuj hranici odstavce, pak věty, pak slova
@@ -169,6 +165,39 @@
     return out.trim();
   }
 
+  // ===== Link inline injector =====
+  // - Pokud link chybí, vloží ho po 1. odstavci jako samostatný řádek.
+  // - Pokud najde větu „navštivte náš článek na …“ bez URL, doplní ji o link.
+  // - Pokud je link už přítomen, nechá vše být.
+  function injectLinkInline(text, link) {
+    if (!link) return text || "";
+    let out = String(text || "").replace(/\r/g, "");
+    if (out.includes(link)) return out;
+
+    // 1) Zkus nahradit "…navštivte náš článek na" → přidat URL
+    const lines = out.split(/\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (/navštivte\s+náš\s+článek\s+na\s*[:.]?\s*$/i.test(l.trim())) {
+        lines[i] = l.replace(/\s*[:.]?\s*$/i, ` ${link}`);
+        out = lines.join("\n");
+        return out;
+      }
+    }
+
+    // 2) Vlož link po 1. odstavci (po prvním prázdném řádku)
+    const parts = out.split(/\n{2,}/);
+    if (parts.length >= 2) {
+      const first = parts[0].trimEnd();
+      const rest  = parts.slice(1).join("\n\n").trimStart();
+      out = `${first}\n\n${link}\n\n${rest}`.trim();
+    } else {
+      // když není odstavec, prostě link připojit na nový řádek
+      out = `${out.trim()}\n\n${link}`.trim();
+    }
+    return out;
+  }
+
   // ===== Tone helpers (multiselect) =====
   function getSelectedTones() {
     return Array.from($("toneMulti").selectedOptions).map(o => o.value);
@@ -177,14 +206,12 @@
     const opts = Array.from($("toneMulti").options);
     const set = new Set((values || []).map(v => v.toLowerCase()));
     opts.forEach(o => { o.selected = set.has(o.value.toLowerCase()); });
-    // pokud nic není, nech aspoň "profesionální"
     if (!Array.from($("toneMulti").selectedOptions).length) {
       opts.find(o => o.value === "profesionální").selected = true;
     }
   }
 
   // ===== Length helpers =====
-  // id -> bucket (pro stávající backend) + hint (pro budoucnost)
   const LENGTH_MAP = {
     vk: { bucket: "krátká",  min: 300,  max: 500  },
     k:  { bucket: "krátká",  min: 400,  max: 800  },
@@ -200,11 +227,9 @@
   // ===== Presets helpers =====
   function applyPresetObject(p) {
     if (!p) return;
-    // TOV – řetězec typu "profesionální + edukativní + pro management"
     const tones = String(p.tone_of_voice || "").split("+").map(s => s.trim()).filter(Boolean);
     setSelectedTones(tones);
 
-    // Délka – podporuj starý formát ("krátká") i nový ("vk|k|s|d|vd")
     const lenId = (() => {
       const raw = (p.length_profile || "").toLowerCase();
       if (["vk","k","s","d","vd"].includes(raw)) return raw;
@@ -226,7 +251,7 @@
     const tones = getSelectedTones();
     const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
 
-    const lengthSel = getLengthSelection(); // { id, bucket, min, max }
+    const lengthSel = getLengthSelection();
 
     const project = $("projectName").value || "Springwalk – MVP";
     const rawLink = $("linkUrl").value;
@@ -243,9 +268,7 @@
     return {
       project_name: project,
       tone: toneCombined,
-      // legacy pole pro backend (bucket)
       length: lengthSel.bucket,
-      // hint pro budoucí verze backendu (ignorováno, nevadí)
       length_hint: { id: lengthSel.id, min: lengthSel.min, max: lengthSel.max },
       keywords: $("keywords").value,
       source_text: $("sourceText").value,
@@ -257,10 +280,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     console.log("[Springwalk] DOM ready");
 
-    // defaultní kampaň = slug projektu
     $("utmCampaign").value = slugify($("projectName").value || "springwalk-mvp");
-
-    // auto-sync kampaně při změně názvu projektu
     $("projectName").addEventListener("input", () => {
       if ($("utmAutoSync").checked) {
         $("utmCampaign").value = slugify($("projectName").value || "springwalk-mvp");
@@ -280,10 +300,13 @@
 
       try {
         // 1) Generace
-        const data = await callGenerate(SUPABASE_URL, SUPABASE_ANON_KEY, payload);
+        let data = await callGenerate(SUPABASE_URL, SUPABASE_ANON_KEY, payload);
         let text = data.content || "";
 
-        // 2) Doporučené hashtagy (3 ks)
+        // 2) VLOŽ LINK DO TĚLA (hned po prvním odstavci / nebo do věty "…náš článek na")
+        text = injectLinkInline(text, payload.link_url);
+
+        // 3) Doporučené hashtagy (3 ks)
         try {
           lastSuggestedTags = await callSuggestHashtags(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, 3);
         } catch (e) {
@@ -291,11 +314,11 @@
           lastSuggestedTags = [];
         }
 
-        // 3) Ujisti tail (#springwalk + 3 tagy + link) a zachovej odstavce
-        text = shortenTo(text, 2000, payload.link_url, "#springwalk", lastSuggestedTags);
+        // 4) ZACHOVEJ ODSTAVCE, TAIL = POUZE HASHTAGY (link už je v textu)
+        text = shortenTo(text, 2000, "", "#springwalk", lastSuggestedTags);
         showOutput(text);
 
-        // 4) Validace
+        // 5) Validace (pošleme link zvlášť – validátor jen ověří, že je v textu přítomen)
         const check = await callValidate(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, payload.link_url);
         showChecks(check);
       } catch (err) {
@@ -313,10 +336,12 @@
       copyToClipboard(text);
     });
 
-    // SHORTEN
+    // SHORTEN (znovu vloží link do těla, kdyby ho uživatel omylem smazal)
     $("btnShorten").addEventListener("click", () => {
-      const pf = readForm(); // aby UTM odpovídaly aktuálnímu stavu
-      const shortened = shortenTo(getOutputText(), 900, pf.link_url, "#springwalk", lastSuggestedTags);
+      const pf = readForm();
+      let cur = getOutputText();
+      cur = injectLinkInline(cur, pf.link_url);
+      const shortened = shortenTo(cur, 900, "", "#springwalk", lastSuggestedTags);
       showOutput(shortened);
     });
 
@@ -415,7 +440,7 @@
       const name = $("presetName").value.trim();
       if (!name) return alert("Zadej název presetu.");
 
-      const tones = getSelectedTones();
+      const tones = Array.from($("toneMulti").selectedOptions).map(o => o.value);
       const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
       const lenId = $("length").value || "k";
 
@@ -424,8 +449,8 @@
           project_name: project,
           channel: "LinkedIn",
           name,
-          tone_of_voice: toneCombined,  // celý string "a + b + c"
-          length_profile: lenId,        // ID vk|k|s|d|vd (při načtení zase vybereme)
+          tone_of_voice: toneCombined,
+          length_profile: lenId,
           is_default: false
         });
         alert("Preset uložen.");
