@@ -1,6 +1,6 @@
 // scripts/main.js
 (function () {
-  const BUILD = "main.js v2025-10-09b";
+  const BUILD = "main.js v2025-10-09c";
   console.log("[Springwalk]", BUILD);
 
   // ---------- DOM helpers ----------
@@ -21,10 +21,7 @@
 
   function showChecks(res) {
     const box = $("checks");
-    if (!res) {
-      box.textContent = "";
-      return;
-    }
+    if (!res) { box.textContent = ""; return; }
     const { valid, issues = [], warnings = [], length } = res;
     let txt = `Délka: ${length} znaků\n`;
     if (issues.length) txt += `❌ Nutné opravit:\n- ${issues.join("\n- ")}\n`;
@@ -34,25 +31,15 @@
   }
 
   async function copyToClipboard(text) {
-    try {
-      await navigator.clipboard.writeText(text);
-      alert("Zkopírováno do schránky.");
-    } catch {
-      alert("Nepodařilo se kopírovat. Zkopíruj prosím ručně.");
-    }
+    try { await navigator.clipboard.writeText(text); alert("Zkopírováno do schránky."); }
+    catch { alert("Nepodařilo se kopírovat. Zkopíruj prosím ručně."); }
   }
 
   // ---------- Config ----------
   function getConfig() {
-    if (!window.APP_CONFIG) {
-      showOutput("❌ Chybí scripts/config.js (APP_CONFIG). Zkontroluj GitHub Actions a Secrets.");
-      throw new Error("APP_CONFIG not found");
-    }
+    if (!window.APP_CONFIG) { showOutput("❌ Chybí scripts/config.js."); throw new Error("APP_CONFIG not found"); }
     const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      showOutput("❌ APP_CONFIG je neúplný. Zkontroluj Secrets SUPABASE_URL / SUPABASE_ANON_KEY.");
-      throw new Error("APP_CONFIG incomplete");
-    }
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) { showOutput("❌ APP_CONFIG je neúplný."); throw new Error("APP_CONFIG incomplete"); }
     return { SUPABASE_URL, SUPABASE_ANON_KEY };
   }
 
@@ -95,70 +82,74 @@
     return r.json();
   }
 
-  // ---------- Utils ----------
-  function readForm() {
-    return {
-      project_name: $("projectName").value || "Springwalk – MVP",
-      tone: $("tone").value,
-      length: $("length").value,
-      keywords: $("keywords").value,
-      source_text: $("sourceText").value,
-      link_url: $("linkUrl").value
-    };
+  async function callSuggestHashtags(url, key, channel, content, want = 3) {
+    const r = await fetch(`${url}/functions/v1/suggest-hashtags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify({ channel, content, count: want })
+    });
+    if (!r.ok) throw new Error(await r.text().catch(() => "") || `HTTP ${r.status}`);
+    const json = await r.json();
+    return Array.isArray(json?.hashtags) ? json.hashtags : [];
   }
 
+  // ---------- Utils ----------
+  function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
   /**
-   * Zkrátí text tak, aby se vešel do "target" znaků.
-   * VÝSLEDNÝ TVAR: (tělo) + prázdný řádek + #springwalk + prázdný řádek + URL
-   * - Původní #springwalk a přesně zadaná URL se nejdřív odstraní (aby nebyly duplicity).
-   * - Zkracuje se pouze tělo, ocásek (tag+link) je vždy zachovaný na konci.
+   * Zkrátí text s tím, že:
+   *  - zachová odstavce (prázdný řádek = \n\n)
+   *  - NA KONCI přidá: řádek s hashtagy (springwalk + extraTags) a pak link na samostatném řádku
+   *  - hashtagy/link z těla nejdřív *odstraní* (aby nebyly duplicity)
    */
-  function shortenTo(content, target = 900, preserveLink = "", enforceTag = "#springwalk") {
-    // 1) Normalizace
+  function shortenTo(content, target = 900, link = "", enforceTag = "#springwalk", extraTags = []) {
+    // 1) Normalizace – zachovej odstavce
     let body = String(content || "")
       .replace(/\r/g, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
-    // 2) Odstraň existující hashtag (pouze přesnou podobu)
+    // 2) odstraň enforceTag kdekoliv (bez kolapsu odstavců)
     if (enforceTag) {
-      const tagRe = new RegExp(`(^|\\s)${enforceTag}(\\s|$)`, "gi");
-      body = body.replace(tagRe, " ").replace(/\s{2,}/g, " ").trim();
+      const tagRe = new RegExp(`(^|\\n)\\s*${escapeRegex(enforceTag)}\\s*(?=\\n|$)`, "gi");
+      body = body.replace(tagRe, "$1").trim();
     }
 
-    // 3) Odstraň z těla i konkrétní URL (a její markdown variantu)
-    if (preserveLink) {
-      const linkEsc = preserveLink.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const mdLinkRe = new RegExp(`\\[([^\\]]+)\\]\\(${linkEsc}\\)`, "gi");
-      body = body.replace(mdLinkRe, "")
-                 .replace(new RegExp(linkEsc, "gi"), "")
-                 .replace(/\s{2,}/g, " ")
-                 .trim();
+    // 3) odstraň konkrétní URL i její markdown variantu
+    if (link) {
+      const linkEsc = escapeRegex(link);
+      const mdRe = new RegExp(`\\[([^\\]]+)\\]\\(${linkEsc}\\)`, "gi");
+      body = body.replace(mdRe, "").replace(new RegExp(linkEsc, "gi"), "").trim();
+      // prázdné řádky po odstranění zarovnej na max dvě \n
+      body = body.replace(/\n{3,}/g, "\n\n").trim();
     }
 
-    // 4) Připrav ocásek (bude NA KONCI)
-    const tailParts = [];
-    if (enforceTag) tailParts.push(enforceTag);
-    if (preserveLink) tailParts.push(preserveLink);
-    const tail = tailParts.join("\n\n"); // mezi tagem a linkem taky prázdný řádek
-    const reserve = tail ? tail.length + 2 /* prázdný řádek mezi tělem a ocáskem */ : 0;
+    // 4) připrav tail: hashtags line + (prázdný řádek) + link
+    const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
+    const tags = uniq([enforceTag, ...extraTags]).join(" ");
+    const tail = tags + (link ? `\n\n${link}` : "");
+    const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0; // + prázdný řádek mezi tělem a tail
 
     const maxBody = Math.max(0, target - reserve);
 
-    // 5) Zkrať pouze tělo
+    // 5) Zkracuj pouze tělo – hledej hranici na odstavci nebo větě
     let trimmed = body;
     if (trimmed.length > maxBody) {
       let cut = trimmed.slice(0, maxBody);
-      const lastStop = Math.max(cut.lastIndexOf("\n\n"), cut.lastIndexOf(". "));
-      if (lastStop > maxBody * 0.5) cut = cut.slice(0, lastStop + 1);
+      // preferuj hranici odstavce, pak větu, pak slovo
+      const lastPara = cut.lastIndexOf("\n\n");
+      const lastSent = cut.lastIndexOf(". ");
+      const lastSpace = cut.lastIndexOf(" ");
+      let at = lastPara;
+      if (at < maxBody * 0.45) at = Math.max(lastSent, lastPara);
+      if (at < maxBody * 0.25) at = Math.max(lastSpace, at);
+      if (at > 0) cut = cut.slice(0, at + 1);
       trimmed = cut.trim();
     }
 
-    // 6) Poskládej: tělo + ocásek na konec
+    // 6) slož výsledek: tělo + prázdný řádek + tail (hashtagy na jedné řádce, link pod tím)
     let out = trimmed;
-    if (tail) {
-      out = out ? `${out}\n\n${tail}` : tail;
-    }
+    if (tail) out = (out ? out + "\n\n" : "") + tail;
     return out.trim();
   }
 
@@ -170,6 +161,8 @@
   }
 
   // ---------- Init ----------
+  let lastSuggestedTags = []; // bude naplněno po generování
+
   document.addEventListener("DOMContentLoaded", () => {
     console.log("[Springwalk] DOM ready");
 
@@ -178,16 +171,44 @@
     // GENERATE
     bind("btnGenerate", "click", async () => {
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
-      const payload = readForm();
+      const payload = {
+        project_name: $("projectName").value || "Springwalk – MVP",
+        tone: $("tone").value,
+        length: $("length").value,
+        keywords: $("keywords").value,
+        source_text: $("sourceText").value,
+        link_url: $("linkUrl").value
+      };
+
       showChecks(null);
       showOutput("⏳ Generuji…");
       $("btnGenerate").disabled = true;
 
       try {
+        // 1) vygeneruj text
         const data = await callGenerate(SUPABASE_URL, SUPABASE_ANON_KEY, payload);
-        showOutput(data.content || "(prázdný výstup)");
+        let text = data.content || "";
 
-        const check = await callValidate(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", data.content, payload.link_url);
+        // 2) doporuč hashtagy z LLM (3 ks) na základě výstupu
+        try {
+          lastSuggestedTags = await callSuggestHashtags(
+            SUPABASE_URL,
+            SUPABASE_ANON_KEY,
+            "LinkedIn",
+            text,
+            3
+          );
+        } catch (e) {
+          console.warn("Hashtag suggestions failed:", e);
+          lastSuggestedTags = [];
+        }
+
+        // 3) Ujisti se, že na KONCI jsou hashtagy (#springwalk + doporučené) a link
+        text = shortenTo(text, 2000, payload.link_url, "#springwalk", lastSuggestedTags);
+        showOutput(text);
+
+        // 4) validace
+        const check = await callValidate(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, payload.link_url);
         showChecks(check);
       } catch (err) {
         console.error(err);
@@ -204,10 +225,10 @@
       copyToClipboard(text);
     });
 
-    // SHORTEN (900 znaků) – zachová #springwalk + URL na KONCI
+    // SHORTEN – zachová odstavce a NA KONCI nechá #springwalk + 3 doporučené + link
     bind("btnShorten", "click", () => {
       const link = $("linkUrl").value;
-      const shortened = shortenTo(getOutputText(), 900, link, "#springwalk");
+      const shortened = shortenTo(getOutputText(), 900, link, "#springwalk", lastSuggestedTags);
       showOutput(shortened);
     });
 
@@ -229,7 +250,7 @@
       }
     });
 
-    // SAVE DRAFT (nová verze)
+    // SAVE DRAFT
     bind("btnSaveDraft", "click", async () => {
       const text = getOutputText();
       if (!text.trim()) return alert("Není co uložit.");
