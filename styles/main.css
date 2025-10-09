@@ -1,0 +1,44 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 700px;
+  margin: 40px auto;
+  line-height: 1.5;
+  color: #222;
+  background-color: #fafafa;
+}
+
+h1 {
+  color: #dd492a;
+  font-size: 1.8em;
+  margin-bottom: 0.6em;
+}
+
+form {
+  background: white;
+  padding: 1.2em;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+input, textarea, select, button {
+  width: 100%;
+  margin-top: 4px;
+  margin-bottom: 14px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1em;
+}
+
+button {
+  background-color: #dd492a;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  padding: 10px 16px;
+}
+
+button:hover {
+  background-color: #b73d23;
+}
