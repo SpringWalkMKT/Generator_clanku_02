@@ -434,4 +434,59 @@
         });
         const sel = $("presetSelect");
         sel.innerHTML = "";
-        if (!list.length
+        if (!list.length) { sel.innerHTML = `<option value="">(žádné presety)</option>`; return; }
+
+        list.forEach(p => {
+          const o = document.createElement("option");
+          o.value = JSON.stringify(p);
+          o.textContent = `${p.name}${p.is_default ? " ★" : ""}`;
+          sel.appendChild(o);
+        });
+
+        const def = list.find(p => p.is_default) || list[0];
+        sel.value = JSON.stringify(def);
+        applyPresetObject(def);
+      } catch (e) {
+        console.warn("Nelze načíst presety:", e);
+      }
+    });
+
+    // PRESETS – použít
+    $("btnApplyPreset").addEventListener("click", () => {
+      const sel = $("presetSelect");
+      if (!sel.value) return;
+      try {
+        const p = JSON.parse(sel.value);
+        applyPresetObject(p);
+      } catch (e) {
+        console.warn("Chybná volba presetu:", e);
+      }
+    });
+
+    // PRESETS – uložit
+    $("btnSavePreset").addEventListener("click", async () => {
+      const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
+      const project = $("projectName").value || "Springwalk – MVP";
+      const name = $("presetName").value.trim();
+      if (!name) return alert("Zadej název presetu.");
+
+      const tones = Array.from($("toneMulti").selectedOptions).map(o => o.value);
+      const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
+      const lenId = $("length").value || "k";
+
+      try {
+        await callPresets(SUPABASE_URL, SUPABASE_ANON_KEY, "POST", {
+          project_name: project,
+          channel: channelLabel(CURRENT_CHANNEL),
+          name,
+          tone_of_voice: toneCombined,
+          length_profile: lenId,
+          is_default: false
+        });
+        alert("Preset uložen.");
+      } catch (e) {
+        alert("❌ Uložení presetu selhalo: " + (e?.message || e));
+      }
+    });
+  });
+})();
