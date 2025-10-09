@@ -1,132 +1,178 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="cs">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Springwalk Content Manager</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='12'%3ESW%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles/main.css" />
+  <meta charset="utf-8">
+  <title>Springwalk Content Manager — Milestone A</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
   <style>
-    body { max-width: 900px; margin: 24px auto; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.5; }
-    pre#output { white-space: pre-wrap; word-wrap: break-word; border: 1px solid #ddd; padding: 10px; border-radius: 6px; min-height: 120px; background:#fafafa; }
-    textarea, input[type="text"], input[type="url"], select { width: 100%; }
-    fieldset { border:1px solid #e5e5e5; padding:10px; margin:12px 0; border-radius:8px; }
-    legend { padding:0 6px; font-weight:600; color:#444; }
-    label.inline { display:inline-block; margin-right:12px; }
-    #actions button { margin-right: 8px; }
-    #drafts, #checks { white-space: pre-wrap; }
+    :root { --bg:#0b0c0f; --card:#12141a; --muted:#9aa0a6; --fg:#e6e8ea; --accent:#3ea6ff; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
+    .wrap{max-width:1100px;margin:40px auto;padding:0 16px}
+    h1{font-weight:650;margin:0 0 6px}
+    .sub{color:var(--muted);margin-bottom:24px}
+    .card{background:var(--card);border:1px solid #1d2129;border-radius:14px;padding:16px;margin:12px 0}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .col{flex:1 1 320px}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input, textarea, select, button{width:100%;background:#0f1116;color:var(--fg);border:1px solid #232734;border-radius:10px;padding:10px 12px}
+    textarea{min-height:110px}
+    button.primary{background:var(--accent);border:none;color:#00131f;font-weight:650}
+    .tabs{display:flex;gap:8px;margin:8px 0 14px}
+    .tab{padding:8px 12px;border:1px solid #22283a;border-radius:999px;color:var(--muted);cursor:pointer;background:#0d1017}
+    .tab.active{border-color:var(--accent);color:#00131f;background:var(--accent)}
+    .hint{font-size:12px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
+    .kpi{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .pill{font-size:12px;padding:6px 10px;border:1px solid #2a3146;border-radius:999px;color:var(--muted)}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:#b5c9ff;}
+    .footer-note{font-size:12px;color:var(--muted);line-height:1.5}
   </style>
 </head>
 <body>
-  <h1>Generátor obsahu – Springwalk</h1>
+  <div class="wrap">
+    <h1>Springwalk Content Manager</h1>
+    <div class="sub">Milestone A: kanály, validace, presety, compliance ČAK</div>
 
-  <form id="generate-form" autocomplete="on">
-    <label>Název projektu:<br />
-      <input type="text" id="projectName" value="Springwalk – MVP" required />
-    </label>
-
-    <fieldset>
-      <legend>Vstupy</legend>
-      <label>Klíčová slova:<br />
-        <input type="text" id="keywords" placeholder="např. advokacie, právo, compliance" />
-      </label><br />
-      <label>Zdrojový text / URL (podklad pro generování):<br />
-        <textarea id="sourceText" rows="6" placeholder="vložit tiskovou zprávu nebo článek"></textarea>
-      </label><br />
-      <label>Odkaz na web (vloží se jako holá URL):<br />
-        <input type="url" id="linkUrl" placeholder="https://springwalk.cz" required />
-      </label><br />
-
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
-        <label>🎯 Délka výstupu:<br />
-          <!-- hodnoty jsou ID: vk/k/s/d/vd; pro backend mapujeme na krátká/střední/dlouhá -->
-          <select id="length">
-            <option value="vk" data-min="300"  data-max="500">Velmi krátká (300–500)</option>
-            <option value="k"  data-min="400"  data-max="800" selected>Krátká (400–800)</option>
-            <option value="s"  data-min="800"  data-max="1200">Střední (800–1200)</option>
-            <option value="d"  data-min="1200" data-max="1800">Dlouhá (1200–1800)</option>
-            <option value="vd" data-min="1800" data-max="2400">Velmi dlouhá (1800–2400)</option>
-          </select>
-        </label>
-
-        <label>🗣️ Tone of Voice (můžeš vybrat více – Ctrl/Cmd + klik):<br />
-          <select id="toneMulti" multiple size="10">
-            <option value="profesionální" selected>profesionální</option>
-            <option value="formální">formální</option>
-            <option value="suchý">suchý</option>
-            <option value="empatický">empatický</option>
-            <option value="stručný">stručný</option>
-            <option value="hravý">hravý</option>
-            <option value="veselý">veselý</option>
-            <option value="chlubivý">chlubivý</option>
-            <option value="pyšný">pyšný</option>
-            <option value="expresivní">expresivní</option>
-            <option value="neutrální">neutrální</option>
-            <option value="edukativní">edukativní</option>
-            <option value="konzervativní">konzervativní</option>
-            <option value="pro management">pro management</option>
-          </select>
-        </label>
+    <!-- Přepínač kanálu -->
+    <div class="card">
+      <label>Kanál</label>
+      <div class="tabs" id="channelTabs">
+        <div class="tab active" data-channel="linkedin">LinkedIn</div>
+        <div class="tab" data-channel="facebook">Facebook</div>
+        <div class="tab" data-channel="instagram">Instagram</div>
+        <div class="tab" data-channel="blog">Blog</div>
       </div>
-      <small>Vybrané TOV pošleme modelu jako kombinaci, např. „profesionální + edukativní + pro management“. (Střídmost a compliance ČAK zachováme v backendu.)</small>
-    </fieldset>
+      <div class="kpi">
+        <div class="pill">TOV: multiselect</div>
+        <div class="pill">Délky: vk/k/s/d/vd → {min,max}</div>
+        <div class="pill">Hashtag #springwalk povinný</div>
+      </div>
+    </div>
 
-    <fieldset>
-      <legend>TOV presety</legend>
-      <div style="display:grid; grid-template-columns:1fr auto; gap:8px; align-items:end;">
-        <label>Název presetu<br />
-          <input type="text" id="presetName" placeholder="např. Stručný management" />
-        </label>
-        <button id="btnSavePreset" type="button">Uložit jako preset (LinkedIn)</button>
+    <!-- Základní vstupy -->
+    <div class="grid">
+      <div class="card">
+        <label for="sourceText">Vstupní podklady (source_text)</label>
+        <textarea id="sourceText" placeholder="Vlož podklady: shrnutí, citace s odkazem, teze…"></textarea>
+
+        <div class="row" style="margin-top:8px">
+          <div class="col">
+            <label for="linkUrl">Odkaz na zdroj / článek</label>
+            <input id="linkUrl" type="url" placeholder="https://…">
+          </div>
+          <div class="col">
+            <label for="lengthCode">Délka (vk/k/s/d/vd)</label>
+            <select id="lengthCode">
+              <option value="vk">velmi krátká</option>
+              <option value="k" selected>krátká</option>
+              <option value="s">střední</option>
+              <option value="d">dlouhá</option>
+              <option value="vd">velmi dlouhá</option>
+            </select>
+          </div>
+        </div>
+
+        <label style="margin-top:8px">Tone of Voice (více možností)</label>
+        <select id="tov" multiple>
+          <option>odborný</option>
+          <option>stručný</option>
+          <option>vysvětlující</option>
+          <option>empatický</option>
+          <option>formální</option>
+          <option>neutrální</option>
+        </select>
+
+        <div class="hint" style="margin-top:6px">
+          Ukládá se jako „a + b + c“ do presetů.
+        </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:end; margin-top:8px">
-        <label>Vybrat preset<br />
-          <select id="presetSelect"><option value="">(načti presety)</option></select>
-        </label>
-        <button id="btnLoadPresets" type="button">Načíst presety</button>
-        <button id="btnApplyPreset" type="button">Použít preset</button>
+      <!-- Kontextové volby per kanál -->
+      <div class="card" id="channelOptions">
+        <!-- LinkedIn/Facebook default hint -->
+        <div data-channel-scope="linkedin facebook" class="scoped">
+          <div class="hint">Link se vkládá do textu. Hashtagy až na konec (obsahují #springwalk + 3 doporučené).</div>
+        </div>
+
+        <!-- Instagram -->
+        <div data-channel-scope="instagram" class="scoped" style="display:none">
+          <label><input type="checkbox" id="igGenerateAlt" /> Vygenerovat ALT text (doporučeno)</label>
+          <label style="margin-top:8px">ALT (čitelné, bez hashtagů)</label>
+          <textarea id="igAlt" placeholder="ALT se doplní po generování" readonly></textarea>
+          <div class="hint">Do caption NEvkládej URL. Přidej „(link v bio)“.</div>
+        </div>
+
+        <!-- Blog -->
+        <div data-channel-scope="blog" class="scoped" style="display:none">
+          <label>Meta Title</label>
+          <input id="blogMetaTitle" maxlength="70" placeholder="~50–60 znaků">
+          <label style="margin-top:8px">Meta Description (≤160)</label>
+          <textarea id="blogMetaDesc" maxlength="160" placeholder="Stručný popis do 160 znaků"></textarea>
+          <label style="margin-top:8px">Návrhy interních odkazů (1 URL na řádek)</label>
+          <textarea id="blogInternalLinks" placeholder="https://springwalk.cz/..."></textarea>
+          <label style="margin-top:8px"><input type="checkbox" id="blogSeparateQuotes" checked/> Jasně oddělit citace od vlastního komentáře (ČAK)</label>
+        </div>
       </div>
-      <small>Presety jsou uloženy per projekt a kanál (zde: LinkedIn). Ukládá se kompletní kombinace TOV + zvolená délka.</small>
-    </fieldset>
+    </div>
 
-    <fieldset>
-      <legend>UTM</legend>
-      <label class="inline"><input type="checkbox" id="addUtm" checked> Přidat UTM parametry do odkazu</label>
-      <label class="inline" style="margin-left:16px;"><input type="checkbox" id="utmAutoSync" checked> Auto-sync kampaně s názvem projektu</label>
-      <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:8px">
-        <label>utm_source<br /><input type="text" id="utmSource" value="linkedin" /></label>
-        <label>utm_medium<br /><input type="text" id="utmMedium" value="organic" /></label>
-        <label>utm_campaign<br /><input type="text" id="utmCampaign" value="springwalk-mvp" /></label>
-        <label>utm_content<br /><input type="text" id="utmContent" placeholder="volitelné" /></label>
-        <label>utm_term<br /><input type="text" id="utmTerm" placeholder="volitelné" /></label>
+    <!-- Presety per kanál -->
+    <div class="card">
+      <div class="row">
+        <div class="col">
+          <label>Preset (per kanál)</label>
+          <select id="presetSelect"></select>
+        </div>
+        <div class="col">
+          <label>Název nového/uloženého preset</label>
+          <input id="presetName" placeholder="např. LinkedIn – stručný + odborný">
+        </div>
       </div>
-    </fieldset>
+      <div class="row" style="margin-top:8px">
+        <div class="col"><button id="presetSave" class="primary">Uložit/aktualizovat preset</button></div>
+        <div class="col"><button id="presetDelete">Smazat preset</button></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div class="col"><button id="presetExport">Export presetů (JSON)</button></div>
+        <div class="col">
+          <label>Přijmout JSON (import)</label>
+          <textarea id="presetImport" class="mono" placeholder='[ { "name":"...", "channel":"linkedin", "tov":"...", "lengthCode":"k" }, ... ]'></textarea>
+          <button id="presetImportBtn">Importovat JSON</button>
+        </div>
+      </div>
+    </div>
 
-    <button id="btnGenerate" type="button">GENEROVAT LINKEDIN POST</button>
-  </form>
+    <!-- Akce -->
+    <div class="card">
+      <div class="row">
+        <div class="col"><button id="btnGenerate" class="primary">Vygenerovat</button></div>
+        <div class="col"><button id="btnValidate">Validovat</button></div>
+        <div class="col"><button id="btnSaveDraft">Uložit draft</button></div>
+        <div class="col"><button id="btnSuggestHashtags">Doporučit hashtagy</button></div>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        Validátor kontroluje délky, #springwalk, link a (u Blogu) meta metadata; u Instagramu zakáže URL v caption.
+      </div>
+    </div>
 
-  <h2>Výstup:</h2>
-  <pre id="output">(zatím prázdné)</pre>
-  <textarea id="outputEdit" rows="10" style="width:100%;display:none;"></textarea>
+    <!-- Výstup -->
+    <div class="card">
+      <label>Výstup</label>
+      <textarea id="output" class="mono" placeholder="Zde se objeví výstup generátoru…"></textarea>
+      <div class="row" style="margin-top:8px">
+        <div class="col"><label>Hashtagy</label><input id="hashtags"></div>
+        <div class="col"><label>Stav validace</label><input id="validationState" readonly></div>
+      </div>
+    </div>
 
-  <div id="actions" style="margin:8px 0;">
-    <button id="btnCopy" type="button">Zkopírovat</button>
-    <button id="btnShorten" type="button">Zkrátit na 900 znaků</button>
-    <button id="btnToggleEdit" type="button">Upravit text</button>
-    <button id="btnSaveDraft" type="button">Uložit jako nový draft</button>
+    <div class="footer-note">
+      <strong>ČAK compliance:</strong> Edukativní charakter, střídmost, bez garance výsledku. Citace/Výňatky vždy s odkazem a jasným odlišením od vlastního komentáře.
+    </div>
   </div>
 
-  <h2>Kontroly:</h2>
-  <div id="checks"></div>
-
-  <h2>Drafty:</h2>
-  <button id="btnLoadDrafts" type="button">Načíst drafty</button>
-  <div id="drafts"></div>
-
-  <!-- Config dřív než main; query param kvůli cache -->
-  <script src="scripts/config.js?v=2025-10-09i"></script>
-  <script src="scripts/main.js?v=2025-10-09i"></script>
-  <noscript>Pro použití této stránky povolte JavaScript.</noscript>
+  <script src="./scripts/config.js"></script>
+  <script src="./scripts/main.js"></script>
 </body>
 </html>
