@@ -141,42 +141,61 @@
   // ===== Text utils =====
   const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags = []) {
-    let body = String(content || "")
-      .replace(/\r/g, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+// vlož místo původní shortenTo
+function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags = []) {
+  // bezpečné zpracování extraTags (může přijít null/string)
+  let tagsInput = [];
+  if (Array.isArray(extraTags)) {
+    tagsInput = extraTags;
+  } else if (typeof extraTags === "string" && extraTags.trim()) {
+    tagsInput = [extraTags.trim()];
+  } // jinak prázdné pole
 
-    if (enforceTag) {
-      const tagRe = new RegExp(`(^|\\n)\\s*${escapeRegex(enforceTag)}\\s*(?=\\n|$)`, "gi");
-      body = body.replace(tagRe, "$1").trim();
-    }
+  // normalizace hashtagů (#prefix, bez mezer)
+  const norm = (t) => {
+    if (!t) return "";
+    let x = String(t).trim();
+    if (!x) return "";
+    if (!x.startsWith("#")) x = "#" + x.replace(/\s+/g, "");
+    return x;
+  };
 
-    body = body.replace(/\n{3,}/g, "\n\n").trim();
+  let body = String(content || "")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
-    const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
-    const tagsLine = uniq([enforceTag, ...extraTags]).join(" ");
-    const tail = tagsLine ? tagsLine : "";
-    const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0;
-
-    const maxBody = Math.max(0, target - reserve);
-    let trimmed = body;
-    if (trimmed.length > maxBody) {
-      let cut = trimmed.slice(0, maxBody);
-      const lastPara  = cut.lastIndexOf("\n\n");
-      const lastSent  = cut.lastIndexOf(". ");
-      const lastSpace = cut.lastIndexOf(" ");
-      let at = lastPara;
-      if (at < maxBody * 0.45) at = Math.max(lastSent, at);
-      if (at < maxBody * 0.25) at = Math.max(lastSpace, at);
-      if (at > 0) cut = cut.slice(0, at + 1);
-      trimmed = cut.trim();
-    }
-
-    let out = trimmed;
-    if (tail) out = (out ? out + "\n\n" : "") + tail;
-    return out.trim();
+  if (enforceTag) {
+    const tagRe = new RegExp(`(^|\\n)\\s*${escapeRegex(enforceTag)}\\s*(?=\\n|$)`, "gi");
+    body = body.replace(tagRe, "$1").trim();
   }
+
+  body = body.replace(/\n{3,}/g, "\n\n").trim();
+
+  const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
+  const tailTags = uniq([norm(enforceTag), ...tagsInput.map(norm)]).filter(Boolean);
+  const tail = tailTags.join(" ");
+  const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0;
+
+  const maxBody = Math.max(0, target - reserve);
+  let trimmed = body;
+  if (trimmed.length > maxBody) {
+    let cut = trimmed.slice(0, maxBody);
+    const lastPara  = cut.lastIndexOf("\n\n");
+    const lastSent  = cut.lastIndexOf(". ");
+    const lastSpace = cut.lastIndexOf(" ");
+    let at = lastPara;
+    if (at < maxBody * 0.45) at = Math.max(lastSent, at);
+    if (at < maxBody * 0.25) at = Math.max(lastSpace, at);
+    if (at > 0) cut = cut.slice(0, at + 1);
+    trimmed = cut.trim();
+  }
+
+  let out = trimmed;
+  if (tail) out = (out ? out + "\n\n" : "") + tail;
+  return out.trim();
+}
+
 
   // vlož link do textu (po 1. odstavci / do věty „…náš článek na“)
   function injectLinkInline(text, link) {
