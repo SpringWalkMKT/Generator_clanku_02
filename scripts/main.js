@@ -1,6 +1,6 @@
 // scripts/main.js
 (function () {
-  const BUILD = "main.js v2025-10-09g";
+  const BUILD = "main.js v2025-10-09h";
   console.log("[Springwalk]", BUILD);
 
   // ===== DOM helpers =====
@@ -182,39 +182,55 @@
   // ===== State =====
   let lastSuggestedTags = [];
 
+  // ===== Read form (včetně kombinovaného TOV a UTM linku) =====
+  function readForm() {
+    const baseTone = $("tone").value;
+    const extras = Array.from(document.querySelectorAll('input[name="toneExtra"]:checked'))
+      .map(el => el.value);
+    const toneCombined = [baseTone, ...extras].filter(Boolean).join(" + ");
+
+    const project = $("projectName").value || "Springwalk – MVP";
+    const rawLink = $("linkUrl").value;
+    const finalLink = $("addUtm").checked
+      ? withUTM(rawLink, {
+          source: $("utmSource").value || "linkedin",
+          medium: $("utmMedium").value || "organic",
+          campaign: $("utmCampaign").value || slugify(project),
+          content: $("utmContent").value || "",
+          term: $("utmTerm").value || ""
+        })
+      : rawLink;
+
+    return {
+      project_name: project,
+      tone: toneCombined,
+      length: $("length").value,
+      keywords: $("keywords").value,
+      source_text: $("sourceText").value,
+      link_url: finalLink
+    };
+  }
+
   // ===== Init & bindings =====
   document.addEventListener("DOMContentLoaded", () => {
     console.log("[Springwalk] DOM ready");
 
     // defaultní kampaň = slug projektu
     $("utmCampaign").value = slugify($("projectName").value || "springwalk-mvp");
+
+    // auto-sync kampaně při změně názvu projektu
+    $("projectName").addEventListener("input", () => {
+      if ($("utmAutoSync").checked) {
+        $("utmCampaign").value = slugify($("projectName").value || "springwalk-mvp");
+      }
+    });
+
     $("generate-form").addEventListener("submit", (e) => e.preventDefault());
 
     // GENERATE
     $("btnGenerate").addEventListener("click", async () => {
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
-      const project = $("projectName").value || "Springwalk – MVP";
-
-      const rawLink = $("linkUrl").value;
-      let finalLink = rawLink;
-      if ($("addUtm").checked) {
-        finalLink = withUTM(rawLink, {
-          source: $("utmSource").value || "linkedin",
-          medium: $("utmMedium").value || "organic",
-          campaign: $("utmCampaign").value || slugify(project),
-          content: $("utmContent").value || "",
-          term: $("utmTerm").value || ""
-        });
-      }
-
-      const payload = {
-        project_name: project,
-        tone: $("tone").value,
-        length: $("length").value,
-        keywords: $("keywords").value,
-        source_text: $("sourceText").value,
-        link_url: finalLink
-      };
+      const payload = readForm();
 
       showChecks(null);
       showOutput("⏳ Generuji…");
@@ -225,7 +241,7 @@
         const data = await callGenerate(SUPABASE_URL, SUPABASE_ANON_KEY, payload);
         let text = data.content || "";
 
-        // 2) Doporučené hashtagy
+        // 2) Doporučené hashtagy (3 ks)
         try {
           lastSuggestedTags = await callSuggestHashtags(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, 3);
         } catch (e) {
@@ -234,11 +250,11 @@
         }
 
         // 3) Ujisti tail (#springwalk + 3 tagy + link) a zachovej odstavce
-        text = shortenTo(text, 2000, finalLink, "#springwalk", lastSuggestedTags);
+        text = shortenTo(text, 2000, payload.link_url, "#springwalk", lastSuggestedTags);
         showOutput(text);
 
         // 4) Validace
-        const check = await callValidate(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, finalLink);
+        const check = await callValidate(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, payload.link_url);
         showChecks(check);
       } catch (err) {
         console.error(err);
@@ -255,15 +271,10 @@
       copyToClipboard(text);
     });
 
-    // SHORTEN (900 znaků) – zachová odstavce, tail na konci
+    // SHORTEN
     $("btnShorten").addEventListener("click", () => {
-      const linkWithUtm = $("addUtm").checked
-        ? withUTM($("linkUrl").value, {
-            source: $("utmSource").value, medium: $("utmMedium").value,
-            campaign: $("utmCampaign").value, content: $("utmContent").value, term: $("utmTerm").value
-          })
-        : $("linkUrl").value;
-      const shortened = shortenTo(getOutputText(), 900, linkWithUtm, "#springwalk", lastSuggestedTags);
+      const pf = readForm(); // aby UTM odpovídaly aktuálnímu stavu
+      const shortened = shortenTo(getOutputText(), 900, pf.link_url, "#springwalk", lastSuggestedTags);
       showOutput(shortened);
     });
 
@@ -313,12 +324,10 @@
         ).join("\n");
       } catch (e) {
         console.error(e); box.textContent = "❌ " + (e?.message || e);
-      } finally {
-        $("btnLoadDrafts").disabled = false;
-      }
+      } finally { $("btnLoadDrafts").disabled = false; }
     });
 
-    // PRESETS – načíst
+    // PRESETS – načíst (tichá auto-aplikace defaultu/1.)
     $("btnLoadPresets").addEventListener("click", async () => {
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
       const project = $("projectName").value || "Springwalk – MVP";
@@ -337,16 +346,15 @@
           sel.appendChild(o);
         });
 
-        // auto-apply default (nebo první)
         const def = list.find(p => p.is_default) || list[0];
         sel.value = JSON.stringify(def);
-        applyPresetObject(def); // tichá aplikace
+        applyPresetObject(def);
       } catch (e) {
         console.warn("Nelze načíst presety:", e);
       }
     });
 
-    // PRESETS – použít (tichá změna, bez alertu)
+    // PRESETS – použít (tichá změna)
     $("btnApplyPreset").addEventListener("click", () => {
       const sel = $("presetSelect");
       if (!sel.value) return;
