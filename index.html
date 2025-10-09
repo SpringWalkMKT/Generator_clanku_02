@@ -1,21 +1,21 @@
 <!DOCTYPE html>
 <html lang="cs">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Springwalk Content Manager</title>
-  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/main.css" />
 </head>
 <body>
   <h1>Generátor obsahu – Springwalk</h1>
 
   <form id="generate-form">
     <label>Název projektu:<br>
-      <input type="text" id="projectName" required>
+      <input type="text" id="projectName" value="Springwalk – MVP" required />
     </label><br>
 
     <label>Klíčová slova:<br>
-      <input type="text" id="keywords" placeholder="např. advokacie, právo, compliance">
+      <input type="text" id="keywords" placeholder="např. advokacie, právo, compliance" />
     </label><br>
 
     <label>Zdrojový text / URL:<br>
@@ -23,20 +23,20 @@
     </label><br>
 
     <label>Odkaz na web:<br>
-      <input type="url" id="linkUrl" placeholder="https://springwalk.cz" required>
+      <input type="url" id="linkUrl" placeholder="https://springwalk.cz" required />
     </label><br>
 
     <label>Tone of Voice:<br>
       <select id="tone">
         <option value="profesionální">Profesionální</option>
         <option value="empatický">Empatický</option>
-        <option value="stručný">Stručný</option>
+        <option value="stručný" selected>Stručný</option>
       </select>
     </label><br>
 
     <label>Délka:<br>
       <select id="length">
-        <option value="krátká">Krátká</option>
+        <option value="krátká" selected>Krátká</option>
         <option value="střední">Střední</option>
         <option value="dlouhá">Dlouhá</option>
       </select>
@@ -48,6 +48,9 @@
   <h2>Výstup:</h2>
   <pre id="output"></pre>
 
+  <!-- 1) config ze Secrets (generuje se v Action) -->
+  <script src="scripts/config.js"></script>
+  <!-- 2) hlavní logika -->
   <script src="scripts/main.js"></script>
 </body>
 </html>
