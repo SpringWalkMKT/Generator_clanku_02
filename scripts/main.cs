@@ -1,6 +1,15 @@
 // scripts/main.js
-const SUPABASE_URL = "https://tufuymtiiwlsariamnul.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR1ZnV5bXRpaXdsc2FyaWFtbnVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MjgwMzcsImV4cCI6MjA3NTUwNDAzN30.sShLazLU7TSJTScrYmZJHQ6kv90pOMVcRb5CiGgM9P0"; // Project Settings → API
+
+// config je injektován GitHub Action do scripts/config.js
+if (!window.APP_CONFIG) {
+  document.addEventListener("DOMContentLoaded", () => {
+    const out = document.getElementById("output");
+    out.textContent = "❌ Chybí scripts/config.js. Zkontroluj GitHub Action.";
+  });
+  throw new Error("APP_CONFIG not found.");
+}
+
+const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
 
 async function callGenerate(inputs) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/generate`, {
@@ -21,7 +30,7 @@ document.getElementById("generate-form").addEventListener("submit", async (e) =>
   out.textContent = "⏳ Generuji…";
 
   const payload = {
-    project_name: "Springwalk – MVP",
+    project_name: document.getElementById("projectName").value || "Springwalk – MVP",
     tone: document.getElementById("tone").value,
     length: document.getElementById("length").value,
     keywords: document.getElementById("keywords").value,
