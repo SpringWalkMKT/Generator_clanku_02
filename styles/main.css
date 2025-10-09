@@ -42,3 +42,8 @@ button {
 button:hover {
   background-color: #b73d23;
 }
+/* … tvé ostatní styly … */
+
+pre#output { white-space: pre-wrap; word-wrap: break-word; }
+#drafts { white-space: pre-wrap; }
+
