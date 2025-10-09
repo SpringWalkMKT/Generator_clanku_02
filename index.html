@@ -39,7 +39,6 @@
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
         <label>🎯 Délka výstupu:<br />
-          <!-- hodnoty jsou ID: vk/k/s/d/vd; pro backend mapujeme na krátká/střední/dlouhá -->
           <select id="length">
             <option value="vk" data-min="300"  data-max="500">Velmi krátká (300–500)</option>
             <option value="k"  data-min="400"  data-max="800" selected>Krátká (400–800)</option>
@@ -68,7 +67,7 @@
           </select>
         </label>
       </div>
-      <small>Vybrané TOV pošleme modelu jako kombinaci, např. „profesionální + edukativní + pro management“. (Střídmost a compliance ČAK zachováme v backendu.)</small>
+      <small>Vybrané TOV pošleme modelu jako kombinaci, např. „profesionální + edukativní + pro management“ (střídmě, v souladu s ČAK).</small>
     </fieldset>
 
     <fieldset>
@@ -125,8 +124,8 @@
   <div id="drafts"></div>
 
   <!-- Config dřív než main; query param kvůli cache -->
-  <script src="scripts/config.js?v=2025-10-09i"></script>
-  <script src="scripts/main.js?v=2025-10-09i"></script>
+  <script src="scripts/config.js?v=2025-10-09-recover"></script>
+  <script src="scripts/main.js?v=2025-10-09-recover"></script>
   <noscript>Pro použití této stránky povolte JavaScript.</noscript>
 </body>
 </html>
