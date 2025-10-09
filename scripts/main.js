@@ -1,24 +1,29 @@
 // scripts/main.js
 (function () {
-  const BUILD = "main.js v2025-10-09j";
-  console.log("[Springwalk]", BUILD);
+  const BUILD = "main.js v2025-10-09-recover";
+  console.log("%c[Springwalk] Boot", "color:#0a0; font-weight:bold;", BUILD);
 
   // ===== DOM helpers =====
   const $ = (id) => document.getElementById(id);
 
+  function must(el, id) {
+    if (!el) throw new Error(`DOM element #${id} not found`);
+    return el;
+  }
+
   function showOutput(text) {
-    const pre = $("output");
-    const ed  = $("outputEdit");
+    const pre = must($("output"), "output");
+    const ed  = must($("outputEdit"), "outputEdit");
     pre.textContent = text || "";
     if (ed.style.display !== "none") ed.value = pre.textContent;
   }
   function getOutputText() {
-    return $("outputEdit").style.display === "none"
-      ? $("output").textContent
-      : $("outputEdit").value;
+    const pre = must($("output"), "output");
+    const ed  = must($("outputEdit"), "outputEdit");
+    return ed.style.display === "none" ? pre.textContent : ed.value;
   }
   function showChecks(res) {
-    const box = $("checks");
+    const box = must($("checks"), "checks");
     if (!res) { box.textContent = ""; return; }
     const { issues = [], warnings = [], length } = res;
     let txt = `Délka: ${length} znaků\n`;
@@ -29,76 +34,81 @@
   }
   async function copyToClipboard(text) {
     try { await navigator.clipboard.writeText(text); alert("Zkopírováno do schránky."); }
-    catch { alert("Nepodařilo se kopírovat. Zkopíruj ručně."); }
+    catch (e) { console.error(e); alert("Nepodařilo se kopírovat. Zkopíruj ručně."); }
   }
 
   // ===== Config =====
   function getConfig() {
-    if (!window.APP_CONFIG) throw new Error("APP_CONFIG not found");
+    if (!window.APP_CONFIG) throw new Error("APP_CONFIG not found (scripts/config.js se nenačetl?)");
     const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error("APP_CONFIG incomplete");
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error("APP_CONFIG lacks SUPABASE_URL/ANON_KEY");
     return { SUPABASE_URL, SUPABASE_ANON_KEY };
   }
 
   // ===== API =====
+  async function httpJson(url, opts = {}) {
+    const r = await fetch(url, opts);
+    const t = await r.text();
+    let json = null;
+    try { json = t ? JSON.parse(t) : null; } catch { /* text */ }
+    if (!r.ok) throw new Error(json?.error || json?.message || t || `HTTP ${r.status}`);
+    return json;
+  }
+
   async function callGenerate(url, key, payload) {
-    const r = await fetch(`${url}/functions/v1/generate`, {
+    console.log("[Generate] call", payload);
+    return httpJson(`${url}/functions/v1/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify(payload)
     });
-    if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
-    return r.json();
   }
   async function callValidate(url, key, channel, content, link) {
-    const r = await fetch(`${url}/functions/v1/validate`, {
+    console.log("[Validate] call", { channel, hasContent: !!content, link });
+    return httpJson(`${url}/functions/v1/validate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify({ channel, content, link_url: link })
     });
-    if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
-    return r.json();
   }
   async function callSaveDraft(url, key, payload) {
-    const r = await fetch(`${url}/functions/v1/save-draft`, {
+    console.log("[SaveDraft] call", payload);
+    return httpJson(`${url}/functions/v1/save-draft`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify(payload)
     });
-    if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
-    return r.json();
   }
   async function loadDrafts(url, key, projectName) {
-    const r = await fetch(`${url}/functions/v1/drafts?project_name=${encodeURIComponent(projectName)}`, {
+    console.log("[Drafts] load", projectName);
+    return httpJson(`${url}/functions/v1/drafts?project_name=${encodeURIComponent(projectName)}`, {
       headers: { "Authorization": `Bearer ${key}` }
     });
-    if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
-    return r.json();
   }
   async function callSuggestHashtags(url, key, channel, content, want = 3) {
-    const r = await fetch(`${url}/functions/v1/suggest-hashtags`, {
+    console.log("[Hashtags] call", { channel, want });
+    const json = await httpJson(`${url}/functions/v1/suggest-hashtags`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify({ channel, content, count: want })
     });
-    if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
-    const json = await r.json();
     return Array.isArray(json?.hashtags) ? json.hashtags : [];
   }
   async function callPresets(url, key, method, payloadOrParams) {
-    if (method === "GET") {
-      const qs = new URLSearchParams(payloadOrParams).toString();
-      const r = await fetch(`${url}/functions/v1/presets?${qs}`, { headers: { "Authorization": `Bearer ${key}` } });
-      if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
-      return r.json();
-    } else {
-      const r = await fetch(`${url}/functions/v1/presets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-        body: JSON.stringify(payloadOrParams)
-      });
-      if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
-      return r.json();
+    try {
+      if (method === "GET") {
+        const qs = new URLSearchParams(payloadOrParams).toString();
+        return await httpJson(`${url}/functions/v1/presets?${qs}`, { headers: { "Authorization": `Bearer ${key}` } });
+      } else {
+        return await httpJson(`${url}/functions/v1/presets`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+          body: JSON.stringify(payloadOrParams)
+        });
+      }
+    } catch (e) {
+      console.warn("[Presets] endpoint chyba/není nasazen:", e.message || e);
+      throw e;
     }
   }
 
@@ -117,35 +127,28 @@
     } catch { return url; }
   }
 
-  // ===== Shorten (zachovat odstavce + tail na konci) =====
+  // ===== Shorten & helpers =====
   const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  // TAIL = jen hashtagy, žádný link (ten bude "v textu")
   function shortenTo(content, target = 900, link = "", enforceTag = "#springwalk", extraTags = []) {
-    // 1) normalizace (ponech odstavce)
     let body = String(content || "")
       .replace(/\r/g, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
-    // 2) odstranit přesnou podobu tagu na vlastním řádku (aby nebyly duplicity)
     if (enforceTag) {
       const tagRe = new RegExp(`(^|\\n)\\s*${escapeRegex(enforceTag)}\\s*(?=\\n|$)`, "gi");
       body = body.replace(tagRe, "$1").trim();
     }
-
-    // 3) (link se už nevynucuje do tailu, proto NIC nemažeme – link je součástí těla)
-    //    přesto sklidíme přebytečné prázdné řádky
     body = body.replace(/\n{3,}/g, "\n\n").trim();
 
-    // 4) připrav tail: "#springwalk #tagy" (BEZ odkazu)
     const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
     const tagsLine = uniq([enforceTag, ...extraTags]).join(" ");
     const tail = tagsLine ? tagsLine : "";
-    const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0; // + prázdný řádek mezi tělem a tail
+    const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0;
+
     const maxBody = Math.max(0, target - reserve);
 
-    // 5) zkrátit pouze tělo – preferuj hranici odstavce, pak věty, pak slova
     let trimmed = body;
     if (trimmed.length > maxBody) {
       let cut = trimmed.slice(0, maxBody);
@@ -159,22 +162,16 @@
       trimmed = cut.trim();
     }
 
-    // 6) složit výstup
     let out = trimmed;
     if (tail) out = (out ? out + "\n\n" : "") + tail;
     return out.trim();
   }
 
-  // ===== Link inline injector =====
-  // - Pokud link chybí, vloží ho po 1. odstavci jako samostatný řádek.
-  // - Pokud najde větu „navštivte náš článek na …“ bez URL, doplní ji o link.
-  // - Pokud je link už přítomen, nechá vše být.
   function injectLinkInline(text, link) {
     if (!link) return text || "";
     let out = String(text || "").replace(/\r/g, "");
     if (out.includes(link)) return out;
 
-    // 1) Zkus nahradit "…navštivte náš článek na" → přidat URL
     const lines = out.split(/\n/);
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i];
@@ -185,33 +182,36 @@
       }
     }
 
-    // 2) Vlož link po 1. odstavci (po prvním prázdném řádku)
     const parts = out.split(/\n{2,}/);
     if (parts.length >= 2) {
       const first = parts[0].trimEnd();
       const rest  = parts.slice(1).join("\n\n").trimStart();
       out = `${first}\n\n${link}\n\n${rest}`.trim();
     } else {
-      // když není odstavec, prostě link připojit na nový řádek
       out = `${out.trim()}\n\n${link}`.trim();
     }
     return out;
   }
 
-  // ===== Tone helpers (multiselect) =====
+  // ===== Tone & Length =====
   function getSelectedTones() {
-    return Array.from($("toneMulti").selectedOptions).map(o => o.value);
+    const el = $("toneMulti");
+    if (!el) return ["profesionální"];
+    const vals = Array.from(el.selectedOptions).map(o => o.value);
+    return vals.length ? vals : ["profesionální"];
   }
   function setSelectedTones(values) {
-    const opts = Array.from($("toneMulti").options);
+    const el = $("toneMulti");
+    if (!el) return;
+    const opts = Array.from(el.options);
     const set = new Set((values || []).map(v => v.toLowerCase()));
     opts.forEach(o => { o.selected = set.has(o.value.toLowerCase()); });
-    if (!Array.from($("toneMulti").selectedOptions).length) {
-      opts.find(o => o.value === "profesionální").selected = true;
+    if (!Array.from(el.selectedOptions).length) {
+      const def = opts.find(o => o.value === "profesionální");
+      if (def) def.selected = true;
     }
   }
 
-  // ===== Length helpers =====
   const LENGTH_MAP = {
     vk: { bucket: "krátká",  min: 300,  max: 500  },
     k:  { bucket: "krátká",  min: 400,  max: 800  },
@@ -220,48 +220,53 @@
     vd: { bucket: "dlouhá",  min: 1800, max: 2400 },
   };
   function getLengthSelection() {
-    const id = $("length").value || "k";
+    const el = $("length");
+    const id = el ? el.value : "k";
     return { id, ...(LENGTH_MAP[id] || LENGTH_MAP["k"]) };
   }
 
   // ===== Presets helpers =====
   function applyPresetObject(p) {
-    if (!p) return;
-    const tones = String(p.tone_of_voice || "").split("+").map(s => s.trim()).filter(Boolean);
-    setSelectedTones(tones);
+    try {
+      if (!p) return;
+      const tones = String(p.tone_of_voice || "").split("+").map(s => s.trim()).filter(Boolean);
+      setSelectedTones(tones);
 
-    const lenId = (() => {
       const raw = (p.length_profile || "").toLowerCase();
-      if (["vk","k","s","d","vd"].includes(raw)) return raw;
-      if (raw.includes("krátká")) return "k";
-      if (raw.includes("střední")) return "s";
-      if (raw.includes("dlouhá")) return "d";
-      return "k";
-    })();
-    $("length").value = lenId;
+      const lenId = ["vk","k","s","d","vd"].includes(raw)
+        ? raw
+        : raw.includes("střední") ? "s"
+        : raw.includes("dlouhá")  ? "d"
+        : "k";
+      const lenSel = $("length");
+      if (lenSel) lenSel.value = lenId;
 
-    $("presetName").value = p.name || "";
+      const pn = $("presetName");
+      if (pn) pn.value = p.name || "";
+    } catch (e) {
+      console.warn("[Preset] apply failed:", e);
+    }
   }
 
-  // ===== State =====
-  let lastSuggestedTags = [];
-
-  // ===== Read form (TOV multiselect + length map + UTM link) =====
+  // ===== Read form =====
   function readForm() {
     const tones = getSelectedTones();
     const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
 
     const lengthSel = getLengthSelection();
 
-    const project = $("projectName").value || "Springwalk – MVP";
-    const rawLink = $("linkUrl").value;
-    const finalLink = $("addUtm").checked
+    const projEl = $("projectName");
+    const project = projEl && projEl.value ? projEl.value : "Springwalk – MVP";
+    const rawLink = (must($("linkUrl"), "linkUrl").value || "").trim();
+    const addUtm = $("addUtm")?.checked;
+
+    const finalLink = addUtm
       ? withUTM(rawLink, {
-          source: $("utmSource").value || "linkedin",
-          medium: $("utmMedium").value || "organic",
-          campaign: $("utmCampaign").value || slugify(project),
-          content: $("utmContent").value || "",
-          term: $("utmTerm").value || ""
+          source: $("utmSource")?.value || "linkedin",
+          medium: $("utmMedium")?.value || "organic",
+          campaign: $("utmCampaign")?.value || slugify(project),
+          content: $("utmContent")?.value || "",
+          term: $("utmTerm")?.value || ""
         })
       : rawLink;
 
@@ -270,193 +275,215 @@
       tone: toneCombined,
       length: lengthSel.bucket,
       length_hint: { id: lengthSel.id, min: lengthSel.min, max: lengthSel.max },
-      keywords: $("keywords").value,
-      source_text: $("sourceText").value,
+      keywords: $("keywords")?.value || "",
+      source_text: $("sourceText")?.value || "",
       link_url: finalLink
     };
   }
 
-  // ===== Init & bindings =====
+  // ===== Init =====
   document.addEventListener("DOMContentLoaded", () => {
-    console.log("[Springwalk] DOM ready");
+    try {
+      console.log("%c[Springwalk] DOM ready", "color:#06c;");
 
-    $("utmCampaign").value = slugify($("projectName").value || "springwalk-mvp");
-    $("projectName").addEventListener("input", () => {
-      if ($("utmAutoSync").checked) {
-        $("utmCampaign").value = slugify($("projectName").value || "springwalk-mvp");
+      const pn = $("projectName");
+      if ($("utmCampaign") && pn) {
+        $("utmCampaign").value = slugify(pn.value || "springwalk-mvp");
+        pn.addEventListener("input", () => {
+          if ($("utmAutoSync")?.checked) {
+            $("utmCampaign").value = slugify(pn.value || "springwalk-mvp");
+          }
+        });
       }
-    });
 
-    $("generate-form").addEventListener("submit", (e) => e.preventDefault());
+      must($("generate-form"), "generate-form").addEventListener("submit", (e) => e.preventDefault());
 
-    // GENERATE
-    $("btnGenerate").addEventListener("click", async () => {
-      const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
-      const payload = readForm();
+      // GENERATE
+      must($("btnGenerate"), "btnGenerate").addEventListener("click", async () => {
+        console.log("[UI] Generate clicked");
+        let cfg;
+        try { cfg = getConfig(); }
+        catch (e) { console.error(e); return showOutput("❌ Konfigurace chybí (scripts/config.js?)."); }
 
-      showChecks(null);
-      showOutput("⏳ Generuji…");
-      $("btnGenerate").disabled = true;
+        const payload = readForm();
+        showChecks(null);
+        showOutput("⏳ Generuji…");
+        $("btnGenerate").disabled = true;
 
-      try {
-        // 1) Generace
-        let data = await callGenerate(SUPABASE_URL, SUPABASE_ANON_KEY, payload);
-        let text = data.content || "";
-
-        // 2) VLOŽ LINK DO TĚLA (hned po prvním odstavci / nebo do věty "…náš článek na")
-        text = injectLinkInline(text, payload.link_url);
-
-        // 3) Doporučené hashtagy (3 ks)
         try {
-          lastSuggestedTags = await callSuggestHashtags(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, 3);
-        } catch (e) {
-          console.warn("Hashtag suggestions failed:", e);
-          lastSuggestedTags = [];
+          // 1) Generate
+          const data = await callGenerate(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, payload);
+          let text = data?.content || "";
+
+          // 2) Link inline
+          text = injectLinkInline(text, payload.link_url);
+
+          // 3) Hashtagy
+          let lastSuggestedTags = [];
+          try {
+            lastSuggestedTags = await callSuggestHashtags(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, "LinkedIn", text, 3);
+          } catch (e) {
+            console.warn("[Hashtags] skipped:", e.message || e);
+          }
+
+          // 4) Tail = jen hashtagy
+          text = shortenTo(text, 2000, "", "#springwalk", lastSuggestedTags);
+          showOutput(text);
+
+          // 5) Validate
+          try {
+            const check = await callValidate(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, "LinkedIn", text, payload.link_url);
+            showChecks(check);
+          } catch (e) {
+            console.warn("[Validate] skipped:", e.message || e);
+          }
+        } catch (err) {
+          console.error(err);
+          showOutput("❌ Chyba: " + (err?.message || err));
+        } finally {
+          $("btnGenerate").disabled = false;
         }
+      });
 
-        // 4) ZACHOVEJ ODSTAVCE, TAIL = POUZE HASHTAGY (link už je v textu)
-        text = shortenTo(text, 2000, "", "#springwalk", lastSuggestedTags);
-        showOutput(text);
+      // COPY
+      $("btnCopy")?.addEventListener("click", () => {
+        const text = getOutputText();
+        if (!text.trim()) return alert("Není co kopírovat.");
+        copyToClipboard(text);
+      });
 
-        // 5) Validace (pošleme link zvlášť – validátor jen ověří, že je v textu přítomen)
-        const check = await callValidate(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, payload.link_url);
-        showChecks(check);
-      } catch (err) {
-        console.error(err);
-        showOutput("❌ Chyba: " + (err?.message || err));
-      } finally {
-        $("btnGenerate").disabled = false;
-      }
-    });
+      // SHORTEN
+      $("btnShorten")?.addEventListener("click", () => {
+        const payload = readForm();
+        let cur = getOutputText();
+        cur = injectLinkInline(cur, payload.link_url);
+        const shortened = shortenTo(cur, 900, "", "#springwalk", []);
+        showOutput(shortened);
+      });
 
-    // COPY
-    $("btnCopy").addEventListener("click", () => {
-      const text = getOutputText();
-      if (!text.trim()) return alert("Není co kopírovat.");
-      copyToClipboard(text);
-    });
+      // TOGGLE EDIT
+      $("btnToggleEdit")?.addEventListener("click", () => {
+        const ed = must($("outputEdit"), "outputEdit");
+        const pre = must($("output"), "output");
+        const btn = must($("btnToggleEdit"), "btnToggleEdit");
+        if (ed.style.display === "none") {
+          ed.value = pre.textContent; ed.style.display = "block"; pre.style.display = "none";
+          btn.textContent = "Zavřít editor";
+        } else {
+          pre.style.display = "block"; ed.style.display = "none"; showOutput(ed.value);
+          btn.textContent = "Upravit text";
+        }
+      });
 
-    // SHORTEN (znovu vloží link do těla, kdyby ho uživatel omylem smazal)
-    $("btnShorten").addEventListener("click", () => {
-      const pf = readForm();
-      let cur = getOutputText();
-      cur = injectLinkInline(cur, pf.link_url);
-      const shortened = shortenTo(cur, 900, "", "#springwalk", lastSuggestedTags);
-      showOutput(shortened);
-    });
+      // SAVE DRAFT
+      $("btnSaveDraft")?.addEventListener("click", async () => {
+        const text = getOutputText();
+        if (!text.trim()) return alert("Není co uložit.");
+        let cfg;
+        try { cfg = getConfig(); } catch (e) { return alert("Chybí konfigurace."); }
+        const projectName = $("projectName")?.value || "Springwalk – MVP";
+        $("btnSaveDraft").disabled = true;
+        try {
+          const res = await callSaveDraft(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+            project_name: projectName, channel: "LinkedIn", content: text, status: "draft"
+          });
+          alert(`Uloženo jako draft (verze v${res.version}).`);
+        } catch (e) {
+          console.error(e);
+          alert("❌ Uložení selhalo: " + (e?.message || e));
+        } finally { $("btnSaveDraft").disabled = false; }
+      });
 
-    // TOGGLE EDIT
-    $("btnToggleEdit").addEventListener("click", () => {
-      const ed = $("outputEdit"), pre = $("output");
-      const btn = $("btnToggleEdit");
-      if (ed.style.display === "none") {
-        ed.value = pre.textContent; ed.style.display = "block"; pre.style.display = "none";
-        btn.textContent = "Zavřít editor";
-      } else {
-        pre.style.display = "block"; ed.style.display = "none"; showOutput(ed.value);
-        btn.textContent = "Upravit text";
-      }
-    });
+      // LOAD DRAFTS
+      $("btnLoadDrafts")?.addEventListener("click", async () => {
+        let cfg;
+        try { cfg = getConfig(); } catch (e) { return alert("Chybí konfigurace."); }
+        const projectName = $("projectName")?.value || "Springwalk – MVP";
+        const box = must($("drafts"), "drafts");
+        box.textContent = "⏳ Načítám…"; $("btnLoadDrafts").disabled = true;
+        try {
+          const rows = await loadDrafts(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, projectName);
+          if (!rows.length) { box.textContent = "— žádné drafty —"; return; }
+          box.textContent = rows.map(r =>
+            `[${r.created_at}] v${r.version} ${r.channel} (${r.status})\n${r.content}\n---`
+          ).join("\n");
+        } catch (e) {
+          console.error(e); box.textContent = "❌ " + (e?.message || e));
+        } finally { $("btnLoadDrafts").disabled = false; }
+      });
 
-    // SAVE DRAFT
-    $("btnSaveDraft").addEventListener("click", async () => {
-      const text = getOutputText();
-      if (!text.trim()) return alert("Není co uložit.");
-      const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
-      const projectName = $("projectName").value || "Springwalk – MVP";
-      $("btnSaveDraft").disabled = true;
-      try {
-        const res = await callSaveDraft(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          project_name: projectName, channel: "LinkedIn", content: text, status: "draft"
-        });
-        alert(`Uloženo jako draft (verze v${res.version}).`);
-      } catch (e) {
-        console.error(e);
-        alert("❌ Uložení selhalo: " + (e?.message || e));
-      } finally {
-        $("btnSaveDraft").disabled = false;
-      }
-    });
+      // PRESETS – načíst
+      $("btnLoadPresets")?.addEventListener("click", async () => {
+        let cfg;
+        try { cfg = getConfig(); } catch (e) { return alert("Chybí konfigurace."); }
+        const project = $("projectName")?.value || "Springwalk – MVP";
+        const sel = must($("presetSelect"), "presetSelect");
+        sel.innerHTML = `<option value="">(načítám…)</option>`;
+        try {
+          const list = await callPresets(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, "GET", {
+            project_name: project, channel: "LinkedIn"
+          });
+          sel.innerHTML = "";
+          if (!list.length) { sel.innerHTML = `<option value="">(žádné presety)</option>`; return; }
+          list.forEach(p => {
+            const o = document.createElement("option");
+            o.value = JSON.stringify(p);
+            o.textContent = `${p.name}${p.is_default ? " ★" : ""}`;
+            sel.appendChild(o);
+          });
+          const def = list.find(p => p.is_default) || list[0];
+          sel.value = JSON.stringify(def);
+          applyPresetObject(def);
+        } catch (e) {
+          console.warn("[Presets] GET selhal:", e.message || e);
+          sel.innerHTML = `<option value="">(presets API nedostupné)</option>`;
+        }
+      });
 
-    // LOAD DRAFTS
-    $("btnLoadDrafts").addEventListener("click", async () => {
-      const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
-      const projectName = $("projectName").value || "Springwalk – MVP";
-      const box = $("drafts"); box.textContent = "⏳ Načítám…"; $("btnLoadDrafts").disabled = true;
-      try {
-        const rows = await loadDrafts(SUPABASE_URL, SUPABASE_ANON_KEY, projectName);
-        if (!rows.length) { box.textContent = "— žádné drafty —"; return; }
-        box.textContent = rows.map(r =>
-          `[${r.created_at}] v${r.version} ${r.channel} (${r.status})\n${r.content}\n---`
-        ).join("\n");
-      } catch (e) {
-        console.error(e); box.textContent = "❌ " + (e?.message || e);
-      } finally { $("btnLoadDrafts").disabled = false; }
-    });
-
-    // PRESETS – načíst (tichá auto-aplikace defaultu/1.)
-    $("btnLoadPresets").addEventListener("click", async () => {
-      const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
-      const project = $("projectName").value || "Springwalk – MVP";
-      try {
-        const list = await callPresets(SUPABASE_URL, SUPABASE_ANON_KEY, "GET", {
-          project_name: project, channel: "LinkedIn"
-        });
+      // PRESETS – použít
+      $("btnApplyPreset")?.addEventListener("click", () => {
         const sel = $("presetSelect");
-        sel.innerHTML = "";
-        if (!list.length) { sel.innerHTML = `<option value="">(žádné presety)</option>`; return; }
+        if (!sel?.value) return;
+        try {
+          const p = JSON.parse(sel.value);
+          applyPresetObject(p);
+        } catch (e) {
+          console.warn("Chybná volba presetu:", e);
+        }
+      });
 
-        list.forEach(p => {
-          const o = document.createElement("option");
-          o.value = JSON.stringify(p);
-          o.textContent = `${p.name}${p.is_default ? " ★" : ""}`;
-          sel.appendChild(o);
-        });
+      // PRESETS – uložit
+      $("btnSavePreset")?.addEventListener("click", async () => {
+        let cfg;
+        try { cfg = getConfig(); } catch (e) { return alert("Chybí konfigurace."); }
+        const project = $("projectName")?.value || "Springwalk – MVP";
+        const name = ($("presetName")?.value || "").trim();
+        if (!name) return alert("Zadej název presetu.");
 
-        const def = list.find(p => p.is_default) || list[0];
-        sel.value = JSON.stringify(def);
-        applyPresetObject(def);
-      } catch (e) {
-        console.warn("Nelze načíst presety:", e);
-      }
-    });
+        const tones = getSelectedTones();
+        const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
+        const lenId = $("length")?.value || "k";
 
-    // PRESETS – použít (tichá změna)
-    $("btnApplyPreset").addEventListener("click", () => {
-      const sel = $("presetSelect");
-      if (!sel.value) return;
-      try {
-        const p = JSON.parse(sel.value);
-        applyPresetObject(p);
-      } catch (e) {
-        console.warn("Chybná volba presetu:", e);
-      }
-    });
+        try {
+          await callPresets(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, "POST", {
+            project_name: project,
+            channel: "LinkedIn",
+            name,
+            tone_of_voice: toneCombined,
+            length_profile: lenId,
+            is_default: false
+          });
+          alert("Preset uložen.");
+        } catch (e) {
+          console.warn("[Presets] POST selhal:", e.message || e);
+          alert("❌ Uložení presetu selhalo (presets API nedostupné?).");
+        }
+      });
 
-    // PRESETS – uložit nový (uloží KOMPLETNÍ kombinaci TOV + ID délky)
-    $("btnSavePreset").addEventListener("click", async () => {
-      const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
-      const project = $("projectName").value || "Springwalk – MVP";
-      const name = $("presetName").value.trim();
-      if (!name) return alert("Zadej název presetu.");
-
-      const tones = Array.from($("toneMulti").selectedOptions).map(o => o.value);
-      const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
-      const lenId = $("length").value || "k";
-
-      try {
-        await callPresets(SUPABASE_URL, SUPABASE_ANON_KEY, "POST", {
-          project_name: project,
-          channel: "LinkedIn",
-          name,
-          tone_of_voice: toneCombined,
-          length_profile: lenId,
-          is_default: false
-        });
-        alert("Preset uložen.");
-      } catch (e) {
-        alert("❌ Uložení presetu selhalo: " + (e?.message || e));
-      }
-    });
+      console.log("%c[Springwalk] UI wired OK", "color:#0a0;");
+    } catch (e) {
+      console.error("[Boot] Fatal:", e);
+      alert("❌ Inicializace UI selhala: " + (e?.message || e));
+    }
   });
 })();
