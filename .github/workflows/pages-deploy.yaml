@@ -32,7 +32,7 @@ jobs:
           };
           EOF
 
-      # Zabalí celý web jako artifact pro Pages
+      # Zabalí web pro Pages
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -46,3 +46,5 @@ jobs:
     needs: build
     steps:
       - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
