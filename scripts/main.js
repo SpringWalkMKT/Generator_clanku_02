@@ -317,8 +317,10 @@ function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags 
           showIGAlt(data?.alt_text || "");
           // Hashtagy pro IG – na konec tailu
           try {
-            lastSuggestedTags = await api.suggestTags(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, caption, 5);
+            const tags = await api.suggestTags(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, text, 3);
+            lastSuggestedTags = Array.isArray(tags) ? tags : [];
           } catch { lastSuggestedTags = []; }
+
           const withTags = shortenTo(caption, 2200, "#springwalk", lastSuggestedTags);
           showOutput(withTags);
 
@@ -351,9 +353,11 @@ function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags 
           text = injectLinkInline(text, p.link_url);
 
           // Hashtagy
-          try {
-            lastSuggestedTags = await api.suggestTags(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, text, 3);
-          } catch { lastSuggestedTags = []; }
+         try {
+          const tags = await api.suggestTags(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, caption, 5);
+          lastSuggestedTags = Array.isArray(tags) ? tags : [];
+        } catch { lastSuggestedTags = []; }
+
           text = shortenTo(text, p.channel === "Facebook" ? 1500 : 2000, "#springwalk", lastSuggestedTags);
           showOutput(text);
 
