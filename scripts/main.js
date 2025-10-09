@@ -1,16 +1,21 @@
 // scripts/main.js
 (function () {
+  const BUILD = "main.js v2025-10-09a";
+  console.log("[Springwalk]", BUILD);
+
   const $ = (id) => document.getElementById(id);
 
-  // ---------- UI helpers ----------
+  // ---------- helpers ----------
   function showOutput(text) {
-    $("output").textContent = text;
+    const pre = $("output");
     const ed = $("outputEdit");
+    pre.textContent = text;
     if (ed.style.display !== "none") ed.value = text;
   }
   function getOutputText() {
-    const ed = $("outputEdit");
-    return ed.style.display === "none" ? $("output").textContent : ed.value;
+    return $("outputEdit").style.display === "none"
+      ? $("output").textContent
+      : $("outputEdit").value;
   }
   function showChecks(res) {
     const box = $("checks");
@@ -22,8 +27,25 @@
     if (!issues.length && !warnings.length) txt += "✅ V pořádku.";
     box.textContent = txt;
   }
+  async function copyToClipboard(text) {
+    try { await navigator.clipboard.writeText(text); alert("Zkopírováno do schránky."); }
+    catch { alert("Nepodařilo se kopírovat. Zkopíruj ručně."); }
+  }
+  function shortenTo(content, target = 900, preserveLink = "", enforceTag = "#springwalk") {
+    let out = String(content || "");
+    if (!out.includes(enforceTag)) out = enforceTag + "\n" + out;
+    if (preserveLink && !out.includes(preserveLink)) out += `\n\n${preserveLink}`;
+    if (out.length <= target) return out;
+    let cut = out.slice(0, target);
+    const lastStop = Math.max(cut.lastIndexOf("\n\n"), cut.lastIndexOf(". "));
+    if (lastStop > 200) cut = cut.slice(0, lastStop + 1);
+    out = cut.trim();
+    if (preserveLink && !out.includes(preserveLink)) out += `\n\n${preserveLink}`;
+    if (!out.includes(enforceTag)) out = enforceTag + "\n" + out;
+    return out;
+  }
 
-  // ---------- Config ----------
+  // ---------- config ----------
   function getConfig() {
     if (!window.APP_CONFIG) { showOutput("❌ Chybí scripts/config.js."); throw new Error("APP_CONFIG not found"); }
     const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
@@ -31,7 +53,7 @@
     return { SUPABASE_URL, SUPABASE_ANON_KEY };
   }
 
-  // ---------- API calls ----------
+  // ---------- API ----------
   async function callGenerate(url, key, payload) {
     const r = await fetch(`${url}/functions/v1/generate`, {
       method: "POST",
@@ -67,54 +89,33 @@
     return r.json();
   }
 
-  // ---------- utils ----------
-  function readForm() {
-    return {
-      project_name: $("projectName").value || "Springwalk – MVP",
-      tone: $("tone").value,
-      length: $("length").value,
-      keywords: $("keywords").value,
-      source_text: $("sourceText").value,
-      link_url: $("linkUrl").value
-    };
-  }
-  function shortenTo(content, target = 900, preserveLink = "", enforceTag = "#springwalk") {
-    let out = String(content || "");
-    // nech #springwalk a link
-    if (!out.includes(enforceTag)) out = enforceTag + "\n" + out;
-    if (preserveLink && !out.includes(preserveLink)) out += `\n\n${preserveLink}`;
-    if (out.length <= target) return out;
-    let cut = out.slice(0, target);
-    const lastStop = Math.max(cut.lastIndexOf("\n\n"), cut.lastIndexOf(". "));
-    if (lastStop > 200) cut = cut.slice(0, lastStop + 1);
-    out = cut.trim();
-    if (preserveLink && !out.includes(preserveLink)) out += `\n\n${preserveLink}`;
-    if (!out.includes(enforceTag)) out = enforceTag + "\n" + out;
-    return out;
-  }
-  async function copyToClipboard(text) {
-    try { await navigator.clipboard.writeText(text); alert("Zkopírováno do schránky."); }
-    catch { alert("Nepodařilo se kopírovat. Zkopíruj ručně."); }
+  // ---------- DOM ----------
+  function bind(id, event, handler) {
+    const el = $(id);
+    if (!el) { console.warn("[Springwalk] Nenalezen element", id); return; }
+    el.addEventListener(event, handler);
   }
 
-  // ---------- init ----------
   document.addEventListener("DOMContentLoaded", () => {
-    const btnGenerate = $("btnGenerate");
-    const btnLoadDrafts = $("btnLoadDrafts");
-    const btnCopy = $("btnCopy");
-    const btnShorten = $("btnShorten");
-    const btnToggleEdit = $("btnToggleEdit");
-    const btnSaveDraft = $("btnSaveDraft");
-    const form = $("generate-form");
+    console.log("[Springwalk] DOM ready");
 
-    form.addEventListener("submit", (e) => e.preventDefault());
+    // bezpečně zruš klasický submit
+    bind("generate-form", "submit", (e) => e.preventDefault());
 
-    btnGenerate.addEventListener("click", async () => {
+    bind("btnGenerate", "click", async () => {
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
-      const payload = readForm();
+      const payload = {
+        project_name: $("projectName").value || "Springwalk – MVP",
+        tone: $("tone").value,
+        length: $("length").value,
+        keywords: $("keywords").value,
+        source_text: $("sourceText").value,
+        link_url: $("linkUrl").value
+      };
+
       showChecks(null);
       showOutput("⏳ Generuji…");
-      btnGenerate.disabled = true;
+      $("btnGenerate").disabled = true;
 
       try {
         const data = await callGenerate(SUPABASE_URL, SUPABASE_ANON_KEY, payload);
@@ -126,43 +127,49 @@
         console.error(err);
         showOutput("❌ Chyba: " + (err?.message || err));
       } finally {
-        btnGenerate.disabled = false;
+        $("btnGenerate").disabled = false;
       }
     });
 
-    btnCopy.addEventListener("click", () => copyToClipboard(getOutputText()));
+    bind("btnCopy", "click", () => {
+      const text = getOutputText();
+      if (!text.trim()) return alert("Není co kopírovat.");
+      copyToClipboard(text);
+    });
 
-    btnShorten.addEventListener("click", () => {
+    bind("btnShorten", "click", () => {
       const link = $("linkUrl").value;
       const shortened = shortenTo(getOutputText(), 900, link, "#springwalk");
       showOutput(shortened);
     });
 
-    btnToggleEdit.addEventListener("click", () => {
+    bind("btnToggleEdit", "click", () => {
       const ed = $("outputEdit");
+      const pre = $("output");
       if (ed.style.display === "none") {
-        ed.value = $("output").textContent;
+        ed.value = pre.textContent;
         ed.style.display = "block";
-        $("output").style.display = "none";
-        btnToggleEdit.textContent = "Zavřít editor";
+        pre.style.display = "none";
+        $("btnToggleEdit").textContent = "Zavřít editor";
       } else {
-        $("output").style.display = "block";
+        pre.style.display = "block";
         ed.style.display = "none";
         showOutput(ed.value);
-        btnToggleEdit.textContent = "Upravit text";
+        $("btnToggleEdit").textContent = "Upravit text";
       }
     });
 
-    btnSaveDraft.addEventListener("click", async () => {
+    bind("btnSaveDraft", "click", async () => {
+      const text = getOutputText();
+      if (!text.trim()) return alert("Není co uložit.");
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
       const projectName = $("projectName").value || "Springwalk – MVP";
-      const content = getOutputText();
-      btnSaveDraft.disabled = true;
+      $("btnSaveDraft").disabled = true;
       try {
         const res = await callSaveDraft(SUPABASE_URL, SUPABASE_ANON_KEY, {
           project_name: projectName,
           channel: "LinkedIn",
-          content,
+          content: text,
           status: "draft"
         });
         alert(`Uloženo jako draft (verze v${res.version}).`);
@@ -170,16 +177,16 @@
         console.error(e);
         alert("❌ Uložení selhalo: " + (e?.message || e));
       } finally {
-        btnSaveDraft.disabled = false;
+        $("btnSaveDraft").disabled = false;
       }
     });
 
-    btnLoadDrafts.addEventListener("click", async () => {
+    bind("btnLoadDrafts", "click", async () => {
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
       const projectName = $("projectName").value || "Springwalk – MVP";
       const box = $("drafts");
       box.textContent = "⏳ Načítám…";
-      btnLoadDrafts.disabled = true;
+      $("btnLoadDrafts").disabled = true;
       try {
         const rows = await loadDrafts(SUPABASE_URL, SUPABASE_ANON_KEY, projectName);
         if (!rows.length) { box.textContent = "— žádné drafty —"; return; }
@@ -190,7 +197,7 @@
         console.error(e);
         box.textContent = "❌ " + (e?.message || e);
       } finally {
-        btnLoadDrafts.disabled = false;
+        $("btnLoadDrafts").disabled = false;
       }
     });
   });
