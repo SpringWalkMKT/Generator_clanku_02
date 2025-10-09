@@ -1,6 +1,6 @@
 // scripts/main.js
 (function () {
-  const BUILD = "main.js v2025-10-09-milestoneA-minimal";
+  const BUILD = "main.js v2025-10-09j";
   console.log("[Springwalk]", BUILD);
 
   // ===== DOM helpers =====
@@ -40,19 +40,6 @@
     return { SUPABASE_URL, SUPABASE_ANON_KEY };
   }
 
-  // ===== Kanál (jen z URL, UI beze změny) =====
-  function getChannel() {
-    const q = new URLSearchParams(location.search).get("channel") || "linkedin";
-    const v = q.toLowerCase();
-    if (["linkedin","facebook","instagram","blog"].includes(v)) return v;
-    return "linkedin";
-  }
-  function channelLabel(ch) {
-    // pro kompatibilitu se stávající DB (drafts/presets používají "LinkedIn" apod.)
-    return ({linkedin:"LinkedIn",facebook:"Facebook",instagram:"Instagram",blog:"Blog"})[ch] || "LinkedIn";
-  }
-  let CURRENT_CHANNEL = getChannel();
-
   // ===== API =====
   async function callGenerate(url, key, payload) {
     const r = await fetch(`${url}/functions/v1/generate`, {
@@ -63,40 +50,15 @@
     if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
     return r.json();
   }
-
-  // Nový formát validace: {channel, text, link}
-  // Fallback na starý: {channel, content, link_url}
   async function callValidate(url, key, channel, content, link) {
-    // pokus o nový formát
-    let r = await fetch(`${url}/functions/v1/validate`, {
+    const r = await fetch(`${url}/functions/v1/validate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({ channel, text: content, link })
+      body: JSON.stringify({ channel, content, link_url: link })
     });
-    if (r.status === 404 || r.status === 400) {
-      // fallback na starý kontrakt
-      r = await fetch(`${url}/functions/v1/validate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-        body: JSON.stringify({ channel: channelLabel(channel), content, link_url: link })
-      });
-    }
     if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
-    const json = await r.json();
-
-    // normalizace odpovědi, aby showChecks fungovalo bez změn UI
-    if (typeof json?.ok === "boolean" && (json.issues || json.warnings)) {
-      const len = content?.length || 0;
-      return { issues: json.issues || [], warnings: json.warnings || [], length: len };
-    }
-    // starý validátor mohl vracet {issues, warnings, length}
-    return {
-      issues: json.issues || [],
-      warnings: json.warnings || [],
-      length: typeof json.length === "number" ? json.length : (content?.length || 0)
-    };
+    return r.json();
   }
-
   async function callSaveDraft(url, key, payload) {
     const r = await fetch(`${url}/functions/v1/save-draft`, {
       method: "POST",
@@ -117,11 +79,27 @@
     const r = await fetch(`${url}/functions/v1/suggest-hashtags`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({ channel, text: content, count: want })
+      body: JSON.stringify({ channel, content, count: want })
     });
     if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
     const json = await r.json();
     return Array.isArray(json?.hashtags) ? json.hashtags : [];
+  }
+  async function callPresets(url, key, method, payloadOrParams) {
+    if (method === "GET") {
+      const qs = new URLSearchParams(payloadOrParams).toString();
+      const r = await fetch(`${url}/functions/v1/presets?${qs}`, { headers: { "Authorization": `Bearer ${key}` } });
+      if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
+      return r.json();
+    } else {
+      const r = await fetch(`${url}/functions/v1/presets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+        body: JSON.stringify(payloadOrParams)
+      });
+      if (!r.ok) throw new Error(await r.text().catch(()=> "") || `HTTP ${r.status}`);
+      return r.json();
+    }
   }
 
   // ===== UTM =====
@@ -142,25 +120,32 @@
   // ===== Shorten (zachovat odstavce + tail na konci) =====
   const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+  // TAIL = jen hashtagy, žádný link (ten bude "v textu")
   function shortenTo(content, target = 900, link = "", enforceTag = "#springwalk", extraTags = []) {
+    // 1) normalizace (ponech odstavce)
     let body = String(content || "")
       .replace(/\r/g, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
+    // 2) odstranit přesnou podobu tagu na vlastním řádku (aby nebyly duplicity)
     if (enforceTag) {
       const tagRe = new RegExp(`(^|\\n)\\s*${escapeRegex(enforceTag)}\\s*(?=\\n|$)`, "gi");
       body = body.replace(tagRe, "$1").trim();
     }
 
+    // 3) (link se už nevynucuje do tailu, proto NIC nemažeme – link je součástí těla)
+    //    přesto sklidíme přebytečné prázdné řádky
     body = body.replace(/\n{3,}/g, "\n\n").trim();
 
+    // 4) připrav tail: "#springwalk #tagy" (BEZ odkazu)
     const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
     const tagsLine = uniq([enforceTag, ...extraTags]).join(" ");
     const tail = tagsLine ? tagsLine : "";
-    const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0; 
+    const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0; // + prázdný řádek mezi tělem a tail
     const maxBody = Math.max(0, target - reserve);
 
+    // 5) zkrátit pouze tělo – preferuj hranici odstavce, pak věty, pak slova
     let trimmed = body;
     if (trimmed.length > maxBody) {
       let cut = trimmed.slice(0, maxBody);
@@ -174,17 +159,22 @@
       trimmed = cut.trim();
     }
 
+    // 6) složit výstup
     let out = trimmed;
     if (tail) out = (out ? out + "\n\n" : "") + tail;
     return out.trim();
   }
 
   // ===== Link inline injector =====
+  // - Pokud link chybí, vloží ho po 1. odstavci jako samostatný řádek.
+  // - Pokud najde větu „navštivte náš článek na …“ bez URL, doplní ji o link.
+  // - Pokud je link už přítomen, nechá vše být.
   function injectLinkInline(text, link) {
     if (!link) return text || "";
     let out = String(text || "").replace(/\r/g, "");
     if (out.includes(link)) return out;
 
+    // 1) Zkus nahradit "…navštivte náš článek na" → přidat URL
     const lines = out.split(/\n/);
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i];
@@ -195,18 +185,20 @@
       }
     }
 
+    // 2) Vlož link po 1. odstavci (po prvním prázdném řádku)
     const parts = out.split(/\n{2,}/);
     if (parts.length >= 2) {
       const first = parts[0].trimEnd();
       const rest  = parts.slice(1).join("\n\n").trimStart();
       out = `${first}\n\n${link}\n\n${rest}`.trim();
     } else {
+      // když není odstavec, prostě link připojit na nový řádek
       out = `${out.trim()}\n\n${link}`.trim();
     }
     return out;
   }
 
-  // ===== Tone helpers =====
+  // ===== Tone helpers (multiselect) =====
   function getSelectedTones() {
     return Array.from($("toneMulti").selectedOptions).map(o => o.value);
   }
@@ -254,24 +246,18 @@
   // ===== State =====
   let lastSuggestedTags = [];
 
-  // ===== Read form =====
+  // ===== Read form (TOV multiselect + length map + UTM link) =====
   function readForm() {
     const tones = getSelectedTones();
     const toneCombined = (tones.length ? tones : ["profesionální"]).join(" + ");
+
     const lengthSel = getLengthSelection();
 
     const project = $("projectName").value || "Springwalk – MVP";
     const rawLink = $("linkUrl").value;
-
-    // UTM source podle kanálu
-    const defaultSource = CURRENT_CHANNEL; // linkedin/facebook/instagram/blog
-    if ($("utmAutoSync").checked && !$("utmSource").value) {
-      $("utmSource").value = defaultSource;
-    }
-
     const finalLink = $("addUtm").checked
       ? withUTM(rawLink, {
-          source: $("utmSource").value || defaultSource,
+          source: $("utmSource").value || "linkedin",
           medium: $("utmMedium").value || "organic",
           campaign: $("utmCampaign").value || slugify(project),
           content: $("utmContent").value || "",
@@ -281,7 +267,6 @@
 
     return {
       project_name: project,
-      channel: CURRENT_CHANNEL, // API očekává lowercase
       tone: toneCombined,
       length: lengthSel.bucket,
       length_hint: { id: lengthSel.id, min: lengthSel.min, max: lengthSel.max },
@@ -293,7 +278,7 @@
 
   // ===== Init & bindings =====
   document.addEventListener("DOMContentLoaded", () => {
-    console.log("[Springwalk] DOM ready, channel =", CURRENT_CHANNEL);
+    console.log("[Springwalk] DOM ready");
 
     $("utmCampaign").value = slugify($("projectName").value || "springwalk-mvp");
     $("projectName").addEventListener("input", () => {
@@ -314,36 +299,27 @@
       $("btnGenerate").disabled = true;
 
       try {
-        // 1) Generace (pošleme i channel)
+        // 1) Generace
         let data = await callGenerate(SUPABASE_URL, SUPABASE_ANON_KEY, payload);
-        let text = data.content || data.text || "";
+        let text = data.content || "";
 
-        // 2) Podle kanálu: IG caption nesmí obsahovat URL
-        if (CURRENT_CHANNEL !== "instagram") {
-          text = injectLinkInline(text, payload.link_url);
-        }
+        // 2) VLOŽ LINK DO TĚLA (hned po prvním odstavci / nebo do věty "…náš článek na")
+        text = injectLinkInline(text, payload.link_url);
 
-        // 3) Doporučené hashtagy (3 ks) – pošleme channel
+        // 3) Doporučené hashtagy (3 ks)
         try {
-          lastSuggestedTags = await callSuggestHashtags(SUPABASE_URL, SUPABASE_ANON_KEY, CURRENT_CHANNEL, text, 3);
+          lastSuggestedTags = await callSuggestHashtags(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, 3);
         } catch (e) {
           console.warn("Hashtag suggestions failed:", e);
           lastSuggestedTags = [];
         }
 
-        // 4) Zkrácení (tail = jen hashtagy, link už je uvnitř – u IG se link nepřidával)
-        const targetLen = CURRENT_CHANNEL === "instagram" ? 2200 : 2000; // IG limit je vyšší
-        text = shortenTo(text, targetLen, "", "#springwalk", lastSuggestedTags);
+        // 4) ZACHOVEJ ODSTAVCE, TAIL = POUZE HASHTAGY (link už je v textu)
+        text = shortenTo(text, 2000, "", "#springwalk", lastSuggestedTags);
         showOutput(text);
 
-        // 5) Validace – nový payload + fallback na starý
-        const check = await callValidate(
-          SUPABASE_URL,
-          SUPABASE_ANON_KEY,
-          CURRENT_CHANNEL,
-          text,
-          payload.link_url
-        );
+        // 5) Validace (pošleme link zvlášť – validátor jen ověří, že je v textu přítomen)
+        const check = await callValidate(SUPABASE_URL, SUPABASE_ANON_KEY, "LinkedIn", text, payload.link_url);
         showChecks(check);
       } catch (err) {
         console.error(err);
@@ -360,15 +336,12 @@
       copyToClipboard(text);
     });
 
-    // SHORTEN (znovu vloží link do těla, kdyby ho uživatel omylem smazal; u IG se link nepřidává)
+    // SHORTEN (znovu vloží link do těla, kdyby ho uživatel omylem smazal)
     $("btnShorten").addEventListener("click", () => {
       const pf = readForm();
       let cur = getOutputText();
-      if (CURRENT_CHANNEL !== "instagram") {
-        cur = injectLinkInline(cur, pf.link_url);
-      }
-      const maxLen = CURRENT_CHANNEL === "instagram" ? 2200 : 900;
-      const shortened = shortenTo(cur, maxLen, "", "#springwalk", lastSuggestedTags);
+      cur = injectLinkInline(cur, pf.link_url);
+      const shortened = shortenTo(cur, 900, "", "#springwalk", lastSuggestedTags);
       showOutput(shortened);
     });
 
@@ -385,7 +358,7 @@
       }
     });
 
-    // SAVE DRAFT (label v DB stále „LinkedIn/Facebook…“ pro kontinuitu)
+    // SAVE DRAFT
     $("btnSaveDraft").addEventListener("click", async () => {
       const text = getOutputText();
       if (!text.trim()) return alert("Není co uložit.");
@@ -394,10 +367,7 @@
       $("btnSaveDraft").disabled = true;
       try {
         const res = await callSaveDraft(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          project_name: projectName,
-          channel: channelLabel(CURRENT_CHANNEL),
-          content: text,
-          status: "draft"
+          project_name: projectName, channel: "LinkedIn", content: text, status: "draft"
         });
         alert(`Uloženo jako draft (verze v${res.version}).`);
       } catch (e) {
@@ -424,13 +394,13 @@
       } finally { $("btnLoadDrafts").disabled = false; }
     });
 
-    // PRESETS – načíst
+    // PRESETS – načíst (tichá auto-aplikace defaultu/1.)
     $("btnLoadPresets").addEventListener("click", async () => {
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
       const project = $("projectName").value || "Springwalk – MVP";
       try {
         const list = await callPresets(SUPABASE_URL, SUPABASE_ANON_KEY, "GET", {
-          project_name: project, channel: channelLabel(CURRENT_CHANNEL) // kompatibilita s backendem
+          project_name: project, channel: "LinkedIn"
         });
         const sel = $("presetSelect");
         sel.innerHTML = "";
@@ -451,7 +421,7 @@
       }
     });
 
-    // PRESETS – použít
+    // PRESETS – použít (tichá změna)
     $("btnApplyPreset").addEventListener("click", () => {
       const sel = $("presetSelect");
       if (!sel.value) return;
@@ -463,7 +433,7 @@
       }
     });
 
-    // PRESETS – uložit
+    // PRESETS – uložit nový (uloží KOMPLETNÍ kombinaci TOV + ID délky)
     $("btnSavePreset").addEventListener("click", async () => {
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
       const project = $("projectName").value || "Springwalk – MVP";
@@ -477,7 +447,7 @@
       try {
         await callPresets(SUPABASE_URL, SUPABASE_ANON_KEY, "POST", {
           project_name: project,
-          channel: channelLabel(CURRENT_CHANNEL),
+          channel: "LinkedIn",
           name,
           tone_of_voice: toneCombined,
           length_profile: lenId,
