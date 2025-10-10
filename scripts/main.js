@@ -1,13 +1,12 @@
 // scripts/main.js
 (function () {
-  const BUILD = "main.js MilestoneA v2025-10-09";
+  const BUILD = "main.js MilestoneA v2025-10-09-1.5";
   console.log("[Springwalk] Boot", BUILD);
 
   // ===== DOM =====
   const $ = (id) => document.getElementById(id);
   const byName = (name) => Array.from(document.getElementsByName(name));
-
-  function must(el, id) { if (!el) throw new Error(`#${id} not found`); return el; }
+  const must = (el, id) => { if (!el) throw new Error(`#${id} not found`); return el; };
 
   // ===== State =====
   let lastSuggestedTags = [];
@@ -19,14 +18,10 @@
     return r ? r.value : "LinkedIn";
   }
   function setChannelUI(ch) {
-    // IG alt panel
     $("igAltWrap").style.display = (ch === "Instagram") ? "block" : "none";
-    // Blog panel
     $("blogWrap").style.display = (ch === "Blog") ? "block" : "none";
-    // Editor toggle – u Blogu nevypínám, ale primárně zobrazujeme blog preview
     $("btnShorten").style.display = (ch === "Blog") ? "none" : "inline-block";
   }
-
   function showOutput(text) {
     const pre = must($("output"), "output");
     const ed  = must($("outputEdit"), "outputEdit");
@@ -55,9 +50,7 @@
     showIGAlt("");
     showBlogPreview({});
   }
-
   function getOutputText() {
-    // u IG/Blogu vracíme hlavní text (caption / „plošný“ markdown náhled)
     const pre = must($("output"), "output");
     const ed  = must($("outputEdit"), "outputEdit");
     return ed.style.display === "none" ? pre.textContent : ed.value;
@@ -72,7 +65,6 @@
     if (!issues.length && !warnings.length) txt += "✅ V pořádku.";
     box.textContent = txt.trim();
   }
-
   async function copyToClipboard(text) {
     try { await navigator.clipboard.writeText(text); alert("Zkopírováno."); }
     catch { alert("Nepodařilo se kopírovat."); }
@@ -110,10 +102,15 @@
     drafts: (base, key, project) => httpJson(`${base}/functions/v1/drafts?project_name=${encodeURIComponent(project)}`, {
       headers: { "Authorization": `Bearer ${key}` }
     }),
-    suggestTags: (base, key, channel, content, n=3) => httpJson(`${base}/functions/v1/suggest-hashtags`, {
-      method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({ channel, content, count: n })
-    }),
+    // NOVÉ: vrací rovnou pole hashtagů
+    suggestTags: async (base, key, channel, content, n = 3) => {
+      const j = await httpJson(`${base}/functions/v1/suggest-hashtags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+        body: JSON.stringify({ channel, content, count: n })
+      });
+      return Array.isArray(j?.hashtags) ? j.hashtags : [];
+    },
     presetsGet: (base, key, q) => httpJson(`${base}/functions/v1/presets?${new URLSearchParams(q)}`, {
       headers: { "Authorization": `Bearer ${key}` }
     }),
@@ -141,61 +138,55 @@
   // ===== Text utils =====
   const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// vlož místo původní shortenTo
-function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags = []) {
-  // bezpečné zpracování extraTags (může přijít null/string)
-  let tagsInput = [];
-  if (Array.isArray(extraTags)) {
-    tagsInput = extraTags;
-  } else if (typeof extraTags === "string" && extraTags.trim()) {
-    tagsInput = [extraTags.trim()];
-  } // jinak prázdné pole
+  // Bezpečná verze – zvládne i nepole
+  function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags = []) {
+    let tagsInput = [];
+    if (Array.isArray(extraTags)) tagsInput = extraTags;
+    else if (typeof extraTags === "string" && extraTags.trim()) tagsInput = [extraTags.trim()];
 
-  // normalizace hashtagů (#prefix, bez mezer)
-  const norm = (t) => {
-    if (!t) return "";
-    let x = String(t).trim();
-    if (!x) return "";
-    if (!x.startsWith("#")) x = "#" + x.replace(/\s+/g, "");
-    return x;
-  };
+    const norm = (t) => {
+      if (!t) return "";
+      let x = String(t).trim();
+      if (!x) return "";
+      if (!x.startsWith("#")) x = "#" + x.replace(/\s+/g, "");
+      return x;
+    };
 
-  let body = String(content || "")
-    .replace(/\r/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    let body = String(content || "")
+      .replace(/\r/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
 
-  if (enforceTag) {
-    const tagRe = new RegExp(`(^|\\n)\\s*${escapeRegex(enforceTag)}\\s*(?=\\n|$)`, "gi");
-    body = body.replace(tagRe, "$1").trim();
+    if (enforceTag) {
+      const tagRe = new RegExp(`(^|\\n)\\s*${escapeRegex(enforceTag)}\\s*(?=\\n|$)`, "gi");
+      body = body.replace(tagRe, "$1").trim();
+    }
+
+    body = body.replace(/\n{3,}/g, "\n\n").trim();
+
+    const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
+    const tailTags = uniq([norm(enforceTag), ...tagsInput.map(norm)]).filter(Boolean);
+    const tail = tailTags.join(" ");
+    const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0;
+
+    const maxBody = Math.max(0, target - reserve);
+    let trimmed = body;
+    if (trimmed.length > maxBody) {
+      let cut = trimmed.slice(0, maxBody);
+      const lastPara  = cut.lastIndexOf("\n\n");
+      const lastSent  = cut.lastIndexOf(". ");
+      const lastSpace = cut.lastIndexOf(" ");
+      let at = lastPara;
+      if (at < maxBody * 0.45) at = Math.max(lastSent, at);
+      if (at < maxBody * 0.25) at = Math.max(lastSpace, at);
+      if (at > 0) cut = cut.slice(0, at + 1);
+      trimmed = cut.trim();
+    }
+
+    let out = trimmed;
+    if (tail) out = (out ? out + "\n\n" : "") + tail;
+    return out.trim();
   }
-
-  body = body.replace(/\n{3,}/g, "\n\n").trim();
-
-  const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
-  const tailTags = uniq([norm(enforceTag), ...tagsInput.map(norm)]).filter(Boolean);
-  const tail = tailTags.join(" ");
-  const reserve = tail.length ? tail.length + (body ? 2 : 0) : 0;
-
-  const maxBody = Math.max(0, target - reserve);
-  let trimmed = body;
-  if (trimmed.length > maxBody) {
-    let cut = trimmed.slice(0, maxBody);
-    const lastPara  = cut.lastIndexOf("\n\n");
-    const lastSent  = cut.lastIndexOf(". ");
-    const lastSpace = cut.lastIndexOf(" ");
-    let at = lastPara;
-    if (at < maxBody * 0.45) at = Math.max(lastSent, at);
-    if (at < maxBody * 0.25) at = Math.max(lastSpace, at);
-    if (at > 0) cut = cut.slice(0, at + 1);
-    trimmed = cut.trim();
-  }
-
-  let out = trimmed;
-  if (tail) out = (out ? out + "\n\n" : "") + tail;
-  return out.trim();
-}
-
 
   // vlož link do textu (po 1. odstavci / do věty „…náš článek na“)
   function injectLinkInline(text, link) {
@@ -310,53 +301,48 @@ function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags 
         const data = await api.generate(SUPABASE_URL, SUPABASE_ANON_KEY, p);
 
         if (p.channel === "Instagram") {
-          // očekáváme { caption, alt_text }
           const captionRaw = data?.caption || "";
           const caption = captionRaw.includes("(link v bio)") ? captionRaw : `${captionRaw}\n\n(link v bio)`;
           showOutput(caption);
           showIGAlt(data?.alt_text || "");
-          // Hashtagy pro IG – na konec tailu
+
+          // Hashtagy – IG (až 5)
           try {
-            const tags = await api.suggestTags(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, text, 3);
-            lastSuggestedTags = Array.isArray(tags) ? tags : [];
+            lastSuggestedTags = await api.suggestTags(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, caption, 5);
           } catch { lastSuggestedTags = []; }
 
           const withTags = shortenTo(caption, 2200, "#springwalk", lastSuggestedTags);
           showOutput(withTags);
 
-          // IG validace (bez linku v textu)
+          // Validace (bez linku v textu)
           try {
             const check = await api.validate(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, withTags, "");
             showChecks(check);
           } catch {}
         }
         else if (p.channel === "Blog") {
-          // očekáváme strukturovaný objekt
           const obj = data || {};
           showBlogPreview(obj);
 
-          // Blog preview do „output“ (pro kopírování)
           const preview = $("outputBlog").textContent || "";
           showOutput(preview);
 
-          // validace pro Blog (link není povinný)
           try {
             const check = await api.validate(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, preview, "");
             showChecks(check);
           } catch {}
         }
         else {
-          // LinkedIn / Facebook – text
+          // LinkedIn / Facebook
           let text = data?.content || "";
 
-          // Link inline (FB/LI ano)
+          // Link inline
           text = injectLinkInline(text, p.link_url);
 
-          // Hashtagy
-         try {
-          const tags = await api.suggestTags(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, caption, 5);
-          lastSuggestedTags = Array.isArray(tags) ? tags : [];
-        } catch { lastSuggestedTags = []; }
+          // Hashtagy – 3
+          try {
+            lastSuggestedTags = await api.suggestTags(SUPABASE_URL, SUPABASE_ANON_KEY, p.channel, text, 3);
+          } catch { lastSuggestedTags = []; }
 
           text = shortenTo(text, p.channel === "Facebook" ? 1500 : 2000, "#springwalk", lastSuggestedTags);
           showOutput(text);
@@ -382,7 +368,7 @@ function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags 
       copyToClipboard(text);
     });
 
-    // === Shorten (SM jen; IG zachová odstavce a tail) ===
+    // === Shorten (ne pro Blog) ===
     $("btnShorten").addEventListener("click", () => {
       const ch = currentChannel();
       if (ch === "Blog") return;
@@ -421,7 +407,7 @@ function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags 
         });
         alert(`Uloženo jako draft (v${res.version}).`);
       } catch (e) {
-        alert("❌ Uložení selhalo: " + (e?.message || e));
+        alert("❌ Uložení presetu selhalo: " + (e?.message || e));
       } finally { $("btnSaveDraft").disabled = false; }
     });
 
@@ -460,7 +446,6 @@ function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags 
         });
         const def = list.find(p => p.is_default) || list[0];
         sel.value = JSON.stringify(def);
-        // apply
         try {
           const tones = String(def.tone_of_voice || "").split("+").map(s=>s.trim()).filter(Boolean);
           Array.from($("toneMulti").options).forEach(o => o.selected = tones.map(t=>t.toLowerCase()).includes(o.value.toLowerCase()));
