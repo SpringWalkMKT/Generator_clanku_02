@@ -1,6 +1,6 @@
 // scripts/main.js
 (function () {
-  const BUILD = "main.js MilestoneA v2025-10-09-1.5";
+  const BUILD = "main.js MilestoneA v2025-10-10-utm+draftlink";
   console.log("[Springwalk] Boot", BUILD);
 
   // ===== DOM =====
@@ -13,24 +13,6 @@
   let lastChannel = "LinkedIn";
 
   // ===== UI helpers =====
-  
-  // --- UTM preset podle kanálu ---
-  const UTM_PRESETS = {
-    LinkedIn:  { source: "linkedin",  medium: "organic" },
-    Facebook:  { source: "facebook",  medium: "organic" },
-    Instagram: { source: "instagram", medium: "organic" },
-    Blog:      { source: "blog",      medium: "article" },
-  };
-
-  function applyUtmPresetForChannel(ch) {
-    const p = UTM_PRESETS[ch] || UTM_PRESETS.LinkedIn;
-    // Nastav předvyplněné hodnoty (uživatel je může kdykoli přepsat)
-    const src = $("utmSource"); if (src) src.value = p.source;
-    const med = $("utmMedium"); if (med) med.value = p.medium;
-  }
-
-
-  
   function currentChannel() {
     const r = byName("channel").find(i => i.checked);
     return r ? r.value : "LinkedIn";
@@ -40,6 +22,20 @@
     $("blogWrap").style.display = (ch === "Blog") ? "block" : "none";
     $("btnShorten").style.display = (ch === "Blog") ? "none" : "inline-block";
   }
+
+  // --- UTM preset podle kanálu ---
+  const UTM_PRESETS = {
+    LinkedIn:  { source: "linkedin",  medium: "organic" },
+    Facebook:  { source: "facebook",  medium: "organic" },
+    Instagram: { source: "instagram", medium: "organic" },
+    Blog:      { source: "blog",      medium: "article" },
+  };
+  function applyUtmPresetForChannel(ch) {
+    const p = UTM_PRESETS[ch] || UTM_PRESETS.LinkedIn;
+    const src = $("utmSource"); if (src) src.value = p.source;
+    const med = $("utmMedium"); if (med) med.value = p.medium;
+  }
+
   function showOutput(text) {
     const pre = must($("output"), "output");
     const ed  = must($("outputEdit"), "outputEdit");
@@ -120,7 +116,6 @@
     drafts: (base, key, project) => httpJson(`${base}/functions/v1/drafts?project_name=${encodeURIComponent(project)}`, {
       headers: { "Authorization": `Bearer ${key}` }
     }),
-    // NOVÉ: vrací rovnou pole hashtagů
     suggestTags: async (base, key, channel, content, n = 3) => {
       const j = await httpJson(`${base}/functions/v1/suggest-hashtags`, {
         method: "POST",
@@ -156,7 +151,6 @@
   // ===== Text utils =====
   const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  // Bezpečná verze – zvládne i nepole
   function shortenTo(content, target = 900, enforceTag = "#springwalk", extraTags = []) {
     let tagsInput = [];
     if (Array.isArray(extraTags)) tagsInput = extraTags;
@@ -294,7 +288,6 @@
         lastChannel = currentChannel();
         setChannelUI(lastChannel);
         applyUtmPresetForChannel(lastChannel);
-        applyUtmPresetForChannel(currentChannel());      
         clearSecondaryOutputs();
         $("output").textContent = "(zatím prázdné)";
         $("outputEdit").style.display = "none";
@@ -302,6 +295,7 @@
       });
     });
     setChannelUI(currentChannel());
+    applyUtmPresetForChannel(currentChannel());
 
     $("generate-form").addEventListener("submit", (e) => e.preventDefault());
 
@@ -411,19 +405,21 @@
       }
     });
 
-    // === Save draft ===
+    // === Save draft (s link_url; bez source_text) ===
     $("btnSaveDraft").addEventListener("click", async () => {
       const text = getOutputText();
       if (!text.trim()) return alert("Není co uložit.");
       const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig();
-      const projectName = $("projectName").value || "Springwalk – MVP";
+      const form = readForm(); // kvůli link_url a kanálu
       $("btnSaveDraft").disabled = true;
       try {
         const res = await api.saveDraft(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          project_name: projectName,
-          channel: currentChannel(),
+          project_name: form.project_name,
+          channel: form.channel,
           content: text,
-          status: "draft"
+          status: "draft",
+          link_url: form.link_url // ukládáme link do DB
+          // source_text NEposíláme
         });
         alert(`Uloženo jako draft (v${res.version}).`);
       } catch (e) {
