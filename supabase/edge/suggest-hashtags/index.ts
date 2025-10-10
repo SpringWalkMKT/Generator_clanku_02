@@ -1,126 +1,84 @@
 // supabase edge function: suggest-hashtags
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS"
-};
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-function sanitizeHash(tag) {
-  // bez diakritiky a mezer → jednoduchá ASCII varianta
-  const map = {
-    á: "a",
-    č: "c",
-    ď: "d",
-    é: "e",
-    ě: "e",
-    í: "i",
-    ň: "n",
-    ó: "o",
-    ř: "r",
-    š: "s",
-    ť: "t",
-    ú: "u",
-    ů: "u",
-    ý: "y",
-    ž: "z",
-    Á: "A",
-    Č: "C",
-    Ď: "D",
-    É: "E",
-    Ě: "E",
-    Í: "I",
-    Ň: "N",
-    Ó: "O",
-    Ř: "R",
-    Š: "S",
-    Ť: "T",
-    Ú: "U",
-    Ů: "U",
-    Ý: "Y",
-    Ž: "Z"
+// (bez nutnosti OpenAI – heuristika; pokud budeš chtít OpenAI, můžu doplnit)
+// === CORS (common) ===
+const ALLOWED_ORIGINS = new Set([
+  "https://springwalkmkt.github.io",
+  "http://localhost:5500"
+]);
+function corsHeaders(origin) {
+  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : "https://springwalkmkt.github.io";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Max-Age": "86400"
   };
-  let s = tag.trim().replace(/^#+/, "");
-  s = s.replace(/[^\w ]/g, (c)=>map[c] ?? ""); // odstran speciální znaky
-  s = s.replace(/\s+/g, ""); // žádné mezery
-  if (!s) return "";
-  s = s.toLowerCase();
-  if (s.length > 28) s = s.slice(0, 28);
-  return "#" + s;
 }
-serve(async (req)=>{
-  if (req.method === "OPTIONS") return new Response(null, {
-    headers: CORS
-  });
-  try {
-    if (req.method !== "POST") return new Response("Method Not Allowed", {
-      status: 405,
-      headers: CORS
-    });
-    const body = await req.json();
-    const count = Math.min(Math.max(body.count ?? 3, 1), 5);
-    const sys = `You suggest concise, neutral, compliant hashtags for a Czech law firm.
-Rules:
-- Return ONLY a JSON object: {"hashtags":["#tag1","#tag2","#tag3"]}.
-- Do NOT include "#springwalk".
-- LinkedIn style: ASCII only, no spaces, lower case, short (<= 28 chars), neutral (no promises, no sensationalism).`;
-    const user = `Text to base hashtags on ( Czech ): 
-${body.content}
-
-Channel: ${body.channel}
-Need exactly ${count} relevant hashtags.`;
-    const aiResp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: sys
-          },
-          {
-            role: "user",
-            content: user
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 120,
-        response_format: {
-          type: "json_object"
-        }
-      })
-    });
-    const json = await aiResp.json();
-    if (!aiResp.ok) {
-      const msg = json?.error?.message ?? JSON.stringify(json);
-      return new Response(`OpenAI error: ${msg}`, {
-        status: 502,
-        headers: CORS
-      });
+function jsonResponse(data, origin, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      ...corsHeaders(origin)
     }
-    let tags = [];
-    try {
-      tags = JSON.parse(json.choices?.[0]?.message?.content ?? "{}").hashtags ?? [];
-    } catch  {}
-    tags = Array.isArray(tags) ? tags : [];
-    // sanitize + dedupe + ořízni na požadovaný počet
-    const clean = Array.from(new Set(tags.map(sanitizeHash).filter(Boolean))).slice(0, count);
-    return new Response(JSON.stringify({
-      hashtags: clean
-    }), {
-      headers: {
-        "Content-Type": "application/json",
-        ...CORS
-      }
+  });
+}
+// === simple heuristic ===
+function suggest(text, channel, want = 3) {
+  const t = (text || "").toLowerCase();
+  const pool = new Set();
+  // základní právní/pracovní
+  if (/(odstupn[eé]|výpověd|pracovn(í|i)\správo|zaměstnanc|zaměstnavatel)/.test(t)) {
+    pool.add("#pracovnipravo");
+    pool.add("#odstupne");
+    pool.add("#zamestnani");
+  }
+  if (/(compliance|regulac|směrnic|ochran(a|y)\sosobních\súdajů|gdpr)/.test(t)) {
+    pool.add("#compliance");
+    pool.add("#pravo");
+  }
+  if (/(novel(a|y)|zákon(ík)?\spráce|změn(y|a))/.test(t)) {
+    pool.add("#novelazakonikuprace");
+    pool.add("#legislativa");
+  }
+  // kanálové nuance
+  if (channel.toLowerCase() === "linkedin") {
+    pool.add("#business");
+    pool.add("#management");
+  }
+  if (channel.toLowerCase() === "facebook") {
+    pool.add("#aktualne");
+  }
+  if (channel.toLowerCase() === "instagram") {
+    pool.add("#tipy");
+  }
+  // odstran #springwalk (frontend ho přidává sám)
+  const arr = Array.from(pool).filter((h)=>h.toLowerCase() !== "#springwalk");
+  return arr.slice(0, Math.max(0, want || 0));
+}
+Deno.serve(async (req)=>{
+  const origin = req.headers.get("origin") ?? "";
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      headers: corsHeaders(origin)
     });
-  } catch (e) {
-    return new Response("Error: " + (e?.message ?? "unknown"), {
-      status: 500,
-      headers: CORS
-    });
+  }
+  try {
+    if (req.method !== "POST") {
+      return jsonResponse({
+        error: "Method Not Allowed"
+      }, origin, 405);
+    }
+    const { channel = "LinkedIn", content = "", count = 3 } = await req.json();
+    const hashtags = suggest(String(content || ""), String(channel || ""), Number(count || 3));
+    return jsonResponse({
+      hashtags
+    }, origin, 200);
+  } catch (err) {
+    console.error("suggest-hashtags error:", err);
+    return jsonResponse({
+      error: err?.message || "Internal Error"
+    }, origin, 500);
   }
 });
