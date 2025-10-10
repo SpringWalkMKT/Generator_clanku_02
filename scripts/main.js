@@ -13,6 +13,24 @@
   let lastChannel = "LinkedIn";
 
   // ===== UI helpers =====
+  
+  // --- UTM preset podle kanálu ---
+  const UTM_PRESETS = {
+    LinkedIn:  { source: "linkedin",  medium: "organic" },
+    Facebook:  { source: "facebook",  medium: "organic" },
+    Instagram: { source: "instagram", medium: "organic" },
+    Blog:      { source: "blog",      medium: "article" },
+  };
+
+  function applyUtmPresetForChannel(ch) {
+    const p = UTM_PRESETS[ch] || UTM_PRESETS.LinkedIn;
+    // Nastav předvyplněné hodnoty (uživatel je může kdykoli přepsat)
+    const src = $("utmSource"); if (src) src.value = p.source;
+    const med = $("utmMedium"); if (med) med.value = p.medium;
+  }
+
+
+  
   function currentChannel() {
     const r = byName("channel").find(i => i.checked);
     return r ? r.value : "LinkedIn";
@@ -275,6 +293,8 @@
       r.addEventListener("change", () => {
         lastChannel = currentChannel();
         setChannelUI(lastChannel);
+        applyUtmPresetForChannel(lastChannel);
+        applyUtmPresetForChannel(currentChannel());      
         clearSecondaryOutputs();
         $("output").textContent = "(zatím prázdné)";
         $("outputEdit").style.display = "none";
