@@ -1,5 +1,4 @@
 // v1.3.0 – akce: Uložit do DB + odkaz na přehled (funkční, bez stylů; nezasahuje do stávající logiky)
-
 (function () {
   function resolveSupabaseConfig() {
     const fromWin = (k) => (typeof window !== "undefined" && window[k]) ? window[k] : null;
@@ -24,7 +23,7 @@
   }
 
   function getProjectName() {
-    const byId = document.getElementById("project_name") || document.getElementById("projectName");
+    const byId = document.getElementById("projectName") || document.getElementById("project_name");
     if (byId?.value) return byId.value.trim();
     const byName = document.querySelector('[name="project_name"]');
     if (byName?.value) return byName.value.trim();
@@ -39,18 +38,33 @@
     return active?.getAttribute("data-channel") || "LinkedIn";
   }
 
+  // Robustní čtení výstupu z původní aplikace:
+  // - primárně editační textarea #outputEdit (pokud je viditelná)
+  // - jinak <pre id="output"> (textContent)
+  // - dále fallbacky pro jiné implementace
   function getVisibleOutputForChannel(channel) {
-    if (typeof window.getOutputText === "function") {
-      try { const t = window.getOutputText(channel); if (t) return String(t).trim(); } catch {}
-    }
+    try {
+      // 1) Původní app má interní getter (není na window) – přeskočíme
+      // 2) Explicitní podpora pro #outputEdit / #output
+      const ed = document.getElementById("outputEdit");
+      const pre = document.getElementById("output");
+      if (ed && ed.style && ed.style.display !== "none" && ed.value && ed.value.trim().length) {
+        return ed.value.trim();
+      }
+      if (pre && pre.textContent && pre.textContent.trim().length) {
+        return pre.textContent.trim();
+      }
+    } catch {}
+
+    // 3) Další fallbacky
     const ta = document.querySelector('#output, #result, textarea[name="output"], textarea#finalOutput');
-    if (ta?.value?.trim()) return ta.value.trim();
-    const pre = document.querySelector('#outputPre, #finalOutputPre, pre#finalOutput');
-    if (pre?.textContent?.trim()) return pre.textContent.trim();
+    if (ta?.value?.trim) return ta.value.trim();
+    const pre = document.querySelector('pre#output, #outputPre, #finalOutputPre, pre#finalOutput');
+    if (pre?.textContent?.trim) return pre.textContent.trim();
     const pv = document.querySelector('.preview, .result, .generated');
-    if (pv?.textContent?.trim()) return pv.textContent.trim();
+    if (pv?.textContent?.trim) return pv.textContent.trim();
     const byId = document.getElementById(`output_${channel}`);
-    if (byId?.textContent?.trim()) return byId.textContent.trim();
+    if (byId?.textContent?.trim) return byId.textContent.trim();
     return "";
   }
 
@@ -64,7 +78,7 @@
 
     const version_label = prompt("Volitelně uveď verzi/poznámku (např. 'LinkedIn – účet A'):", "") || "";
 
-    // Pokud app už má interní API na uložení, použij ho přednostně
+    // Preferuj interní API, je-li k dispozici
     if (window.api && typeof window.api.saveDraft === "function") {
       try {
         await window.api.saveDraft({ project_name, channel, content, version_label });
@@ -75,7 +89,7 @@
       }
     }
 
-    // Fallback: přímé volání edge function save-draft (adaptivní)
+    // Fallback: přímé volání edge function
     try {
       await callEdge("save-draft", { project_name, channel, content, version_label });
       alert("Uloženo do databáze.");
@@ -88,7 +102,6 @@
   function init() {
     const btn = document.getElementById("btnSaveToDb");
     if (btn && !btn.__bound) { btn.addEventListener("click", saveToDb); btn.__bound = true; }
-    // odkaz na projects.html je statický <a>, není třeba JS logiky
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
