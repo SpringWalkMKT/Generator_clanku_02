@@ -512,3 +512,135 @@
     });
   });
 })();
+
+// v1.3.0 — DB save + helpery, bez změny stávající logiky výstupu
+
+(function () {
+  // Bezpečné zjištění Supabase nastavení z existujícího kódu/konfigurace
+  function resolveSupabaseConfig() {
+    // Preferuj globální hodnoty, které už v app existují
+    const fromWin = (key) => (typeof window !== "undefined" && window[key]) ? window[key] : null;
+    const cfg = {
+      url: fromWin("SUPABASE_URL") || fromWin("supabaseUrl") || fromWin("__SUPABASE_URL__") || "https://tufuymtiiwlsariamnul.supabase.co",
+      key: fromWin("SUPABASE_ANON_KEY") || fromWin("supabaseAnonKey") || fromWin("__SUPABASE_ANON_KEY__") || ""
+    };
+    return cfg;
+  }
+
+  async function callEdgeFunction(name, payload) {
+    const { url, key } = resolveSupabaseConfig();
+    const endpoint = `${url}/functions/v1/${name}`;
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(key ? { "apikey": key, "Authorization": `Bearer ${key}` } : {})
+      },
+      body: JSON.stringify(payload || {})
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`${name} ${res.status}: ${t}`);
+    }
+    return res.json().catch(() => ({}));
+  }
+
+  // Heuristické získání hodnot z UI (nezasahuje do existující logiky)
+  function getProjectName() {
+    const elById = document.getElementById("project_name") || document.getElementById("projectName");
+    if (elById && elById.value) return elById.value.trim();
+
+    const byName = document.querySelector('[name="project_name"]');
+    if (byName && byName.value) return byName.value.trim();
+
+    // fallback: pokus o dataset na rootu
+    const root = document.documentElement;
+    const ds = root?.dataset?.projectName;
+    if (ds) return String(ds).trim();
+
+    return "";
+  }
+
+  function getChannel() {
+    const sel = document.getElementById("channel") || document.querySelector('select[name="channel"]');
+    if (sel && sel.value) return sel.value;
+    // fallback: pokud má UI přepínače kanálů s data-channel
+    const active = document.querySelector('[data-channel].active, [data-channel][aria-pressed="true"]');
+    if (active) return active.getAttribute("data-channel");
+    return "LinkedIn";
+  }
+
+  // Získání finálního textu, který uživatel vidí (nezasahujeme do existujících proměnných)
+  function getVisibleOutputForChannel(channel) {
+    // Preferuj textarea/preview, které app už má:
+    // 1) výstupní textarea
+    const ta = document.querySelector('#output, #result, textarea[name="output"], textarea#finalOutput');
+    if (ta && ta.value && ta.value.trim().length > 0) return ta.value.trim();
+
+    // 2) pre/ div s textem
+    const pre = document.querySelector('#outputPre, #finalOutputPre, pre#finalOutput');
+    if (pre && pre.textContent && pre.textContent.trim().length > 0) return pre.textContent.trim();
+
+    // 3) fallback — poslední vygenerovaný text ve stránce (např. v .preview)
+    const pv = document.querySelector('.preview, .result, .generated');
+    if (pv && pv.textContent && pv.textContent.trim().length > 0) return pv.textContent.trim();
+
+    // Pokud app vrství více kanálů, může mít dedikované boxy
+    const byId = document.getElementById(`output_${channel}`);
+    if (byId && byId.textContent && byId.textContent.trim().length > 0) return byId.textContent.trim();
+
+    return "";
+  }
+
+  async function saveCurrentPostToDb() {
+    const project_name = getProjectName();
+    if (!project_name) {
+      alert('Zadej prosím "Název projektu" (project_name) před uložením.');
+      return;
+    }
+    const channel = getChannel();
+    const content = getVisibleOutputForChannel(channel);
+    if (!content) {
+      alert("Nenalezl jsem žádný vygenerovaný obsah k uložení.");
+      return;
+    }
+
+    const version_label = prompt("Volitelně uveď verzi/poznámku (např. 'LinkedIn – účet A'):", "") || "";
+
+    // Adaptivní payload pro edge function `save-draft` (očekává alespoň project_name, channel, content)
+    const payload = {
+      project_name,
+      channel,
+      content,
+      version_label
+      // Pokud tvůj backend podporuje i link_url/utm, lze přidat:
+      // link_url: tryExtractLinkFromContent(content)
+    };
+
+    try {
+      const resp = await callEdgeFunction("save-draft", payload);
+      console.log("save-draft OK:", resp);
+      alert("Uloženo do databáze.");
+    } catch (e) {
+      console.error(e);
+      alert("Uložení selhalo: " + (e?.message || e));
+    }
+  }
+
+  // Ovládací prvky (není závislé na zbytku UI)
+  function initDbActions() {
+    const btn = document.getElementById("saveToDbBtn");
+    if (btn && !btn.__dbBound) {
+      btn.addEventListener("click", saveCurrentPostToDb);
+      btn.__dbBound = true;
+    }
+  }
+
+  // Init po načtení
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initDbActions);
+  } else {
+    initDbActions();
+  }
+})();
+
