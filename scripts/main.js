@@ -1,6 +1,6 @@
 // scripts/main.js
 (function () {
-  const BUILD = "main.js MilestoneA v2025-10-10-utm+draftlink";
+  const BUILD = "main.js v1.2.0";
   console.log("[Springwalk] Boot", BUILD);
 
   // ===== DOM =====
