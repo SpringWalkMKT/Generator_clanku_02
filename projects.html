@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uložené projekty – Springwalk Generator</title>
+</head>
+<body>
+  <main>
+    <h1>Uložené projekty</h1>
+
+    <section>
+      <label for="projectFilter">Projekt:</label>
+      <input id="projectFilter" type="text" placeholder="Filtr podle názvu projektu" />
+      <button id="refreshBtn" type="button">Načíst</button>
+      <a href="index.html" style="margin-left:12px;">← Zpět na generátor</a>
+    </section>
+
+    <section id="projectsContainer" style="margin-top:16px;">
+      <div id="status">Připraveno.</div>
+      <div id="list"></div>
+    </section>
+  </main>
+
+  <script src="scripts/projects.js"></script>
+</body>
+</html>
