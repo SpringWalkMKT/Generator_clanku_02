@@ -1,30 +1,31 @@
-// v1.3.0 – přehled uložených projektů/draftů (auth fix: čtení z window.APP_CONFIG)
-(function () {
-  
-function resolveSupabaseConfig() {
-  const w = (typeof window !== "undefined") ? window : {};
-  const app = w.APP_CONFIG || {};
-  const fromWin = (k) => (typeof w !== "undefined" && w[k]) ? w[k] : null;
-  return {
-    url:
-      app.SUPABASE_URL ||
-      fromWin("SUPABASE_URL") ||
-      fromWin("supabaseUrl") ||
-      fromWin("__SUPABASE_URL__") ||
-      "https://tufuymtiiwlsariamnul.supabase.co",
-    key:
-      app.SUPABASE_ANON_KEY ||
-      fromWin("SUPABASE_ANON_KEY") ||
-      fromWin("supabaseAnonKey") ||
-      fromWin("__SUPABASE_ANON_KEY__") ||
-      ""
-  };
-}
+// v1.3.0 – přehled uložených projektů/draftů (funkční, bez stylů)
+// Čte SUPABASE_URL/ANON_KEY z window.APP_CONFIG (scripts/config.js)
 
+(function () {
+  function resolveSupabaseConfig() {
+    const w = (typeof window !== "undefined") ? window : {};
+    const app = w.APP_CONFIG || {};
+    const fromWin = (k) => (typeof w !== "undefined" && w[k]) ? w[k] : null;
+    return {
+      url:
+        app.SUPABASE_URL ||
+        fromWin("SUPABASE_URL") ||
+        fromWin("supabaseUrl") ||
+        fromWin("__SUPABASE_URL__") ||
+        "https://tufuymtiiwlsariamnul.supabase.co",
+      key:
+        app.SUPABASE_ANON_KEY ||
+        fromWin("SUPABASE_ANON_KEY") ||
+        fromWin("supabaseAnonKey") ||
+        fromWin("__SUPABASE_ANON_KEY__") ||
+        ""
+    };
+  }
 
   async function callEdge(name, payload) {
     const { url, key } = resolveSupabaseConfig();
-    const res = await fetch(`${url}/functions/v1/${name}`, {
+    const endpoint = `${url}/functions/v1/${name}`;
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -32,15 +33,22 @@ function resolveSupabaseConfig() {
       },
       body: JSON.stringify(payload || {})
     });
-    if (!res.ok) throw new Error(`${name} ${res.status}: ${await res.text().catch(()=> "")}`);
+    if (!res.ok) {
+      throw new Error(`${name} ${res.status}: ${await res.text().catch(()=> "")}`);
+    }
     return res.json().catch(()=> ({}));
   }
 
   function el(tag, attrs = {}, text = "") {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
-      if (k === "dataset" && v && typeof v === "object") Object.entries(v).forEach(([dk, dv]) => n.dataset[dk] = dv);
-      else if (k in n) n[k] = v; else n.setAttribute(k, v);
+      if (k === "dataset" && v && typeof v === "object") {
+        Object.entries(v).forEach(([dk, dv]) => n.dataset[dk] = dv);
+      } else if (k in n) {
+        n[k] = v;
+      } else {
+        n.setAttribute(k, v);
+      }
     }
     if (text) n.textContent = text;
     return n;
@@ -59,7 +67,10 @@ function resolveSupabaseConfig() {
 
   function renderList(container, items) {
     container.innerHTML = "";
-    if (!items || !items.length) { container.appendChild(el("p", {}, "Nic nenalezeno.")); return; }
+    if (!items || !items.length) {
+      container.appendChild(el("p", {}, "Nic nenalezeno."));
+      return;
+    }
 
     const byProject = groupBy(items, "project_name");
     for (const [project, rows] of byProject.entries()) {
@@ -102,7 +113,7 @@ function resolveSupabaseConfig() {
     status.textContent = "Načítám…";
 
     const filterName = (filter && filter.value || "").trim();
-    const payload = filterName ? { project_name: filterName } : {};
+    const payload = filterName ? { project_name: filterName } : {}; // adaptivně – pokud edge 'drafts' podporuje filtr
 
     try {
       const resp = await callEdge("drafts", payload);
@@ -126,5 +137,9 @@ function resolveSupabaseConfig() {
     load();
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();
