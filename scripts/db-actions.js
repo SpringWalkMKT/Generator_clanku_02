@@ -1,12 +1,26 @@
-// v1.3.0 – akce: Uložit do DB + odkaz na přehled (funkční, bez stylů; nezasahuje do stávající logiky)
+// v1.3.0 – akce: Uložit do DB + odkaz na přehled (auth fix: čtení z window.APP_CONFIG)
 (function () {
-  function resolveSupabaseConfig() {
-    const fromWin = (k) => (typeof window !== "undefined" && window[k]) ? window[k] : null;
-    return {
-      url: fromWin("SUPABASE_URL") || fromWin("supabaseUrl") || fromWin("__SUPABASE_URL__") || "https://tufuymtiiwlsariamnul.supabase.co",
-      key: fromWin("SUPABASE_ANON_KEY") || fromWin("supabaseAnonKey") || fromWin("__SUPABASE_ANON_KEY__") || ""
-    };
-  }
+  
+function resolveSupabaseConfig() {
+  const w = (typeof window !== "undefined") ? window : {};
+  const app = w.APP_CONFIG || {};
+  const fromWin = (k) => (typeof w !== "undefined" && w[k]) ? w[k] : null;
+  return {
+    url:
+      app.SUPABASE_URL ||
+      fromWin("SUPABASE_URL") ||
+      fromWin("supabaseUrl") ||
+      fromWin("__SUPABASE_URL__") ||
+      "https://tufuymtiiwlsariamnul.supabase.co",
+    key:
+      app.SUPABASE_ANON_KEY ||
+      fromWin("SUPABASE_ANON_KEY") ||
+      fromWin("supabaseAnonKey") ||
+      fromWin("__SUPABASE_ANON_KEY__") ||
+      ""
+  };
+}
+
 
   async function callEdge(name, payload) {
     const { url, key } = resolveSupabaseConfig();
@@ -38,29 +52,17 @@
     return active?.getAttribute("data-channel") || "LinkedIn";
   }
 
-  // Robustní čtení výstupu z původní aplikace:
-  // - primárně editační textarea #outputEdit (pokud je viditelná)
-  // - jinak <pre id="output"> (textContent)
-  // - dále fallbacky pro jiné implementace
   function getVisibleOutputForChannel(channel) {
     try {
-      // 1) Původní app má interní getter (není na window) – přeskočíme
-      // 2) Explicitní podpora pro #outputEdit / #output
       const ed = document.getElementById("outputEdit");
       const pre = document.getElementById("output");
-      if (ed && ed.style && ed.style.display !== "none" && ed.value && ed.value.trim().length) {
-        return ed.value.trim();
-      }
-      if (pre && pre.textContent && pre.textContent.trim().length) {
-        return pre.textContent.trim();
-      }
-    } catch {}
-
-    // 3) Další fallbacky
+      if (ed && ed.style && ed.style.display !== "none" && ed.value && ed.value.trim().length) return ed.value.trim();
+      if (pre && pre.textContent && pre.textContent.trim().length) return pre.textContent.trim();
+    } catch { }
     const ta = document.querySelector('#output, #result, textarea[name="output"], textarea#finalOutput');
     if (ta?.value?.trim) return ta.value.trim();
-    const pre = document.querySelector('pre#output, #outputPre, #finalOutputPre, pre#finalOutput');
-    if (pre?.textContent?.trim) return pre.textContent.trim();
+    const pre2 = document.querySelector('pre#output, #outputPre, #finalOutputPre, pre#finalOutput');
+    if (pre2?.textContent?.trim) return pre2.textContent.trim();
     const pv = document.querySelector('.preview, .result, .generated');
     if (pv?.textContent?.trim) return pv.textContent.trim();
     const byId = document.getElementById(`output_${channel}`);
@@ -71,14 +73,11 @@
   async function saveToDb() {
     const project_name = getProjectName();
     if (!project_name) { alert('Zadej prosím "Název projektu" (project_name) před uložením.'); return; }
-
     const channel = getChannel();
     const content = getVisibleOutputForChannel(channel);
     if (!content) { alert("Nenalezl jsem žádný vygenerovaný obsah k uložení."); return; }
-
     const version_label = prompt("Volitelně uveď verzi/poznámku (např. 'LinkedIn – účet A'):", "") || "";
 
-    // Preferuj interní API, je-li k dispozici
     if (window.api && typeof window.api.saveDraft === "function") {
       try {
         await window.api.saveDraft({ project_name, channel, content, version_label });
@@ -88,8 +87,6 @@
         console.warn("api.saveDraft selhalo, zkouším edge function:", e);
       }
     }
-
-    // Fallback: přímé volání edge function
     try {
       await callEdge("save-draft", { project_name, channel, content, version_label });
       alert("Uloženo do databáze.");
@@ -104,6 +101,5 @@
     if (btn && !btn.__bound) { btn.addEventListener("click", saveToDb); btn.__bound = true; }
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-  else init();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
