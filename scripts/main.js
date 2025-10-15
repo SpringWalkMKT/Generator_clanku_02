@@ -15,7 +15,25 @@
   // ===== UI helpers =====
   function currentChannel() {
     const r = byName("channel").find(i => i.checked);
-    return r ? r.value : "LinkedIn";
+    return r ? r
+
+// --- Post-process order: link above hashtags (LI/FB) ---
+// MARKER_LINK_HASHTAGS_ORDER
+try {
+  if (channel === 'LinkedIn' || channel === 'Facebook') {
+    if (typeof content === 'string') {
+      const linkLine = (typeof finalLink !== 'undefined') ? finalLink : (typeof linkLine !== 'undefined' ? linkLine : '');
+      const hashtagsLine = (typeof hashtags !== 'undefined') ? hashtags : (typeof hashtagsLine !== 'undefined' ? hashtagsLine : '');
+      if (linkLine || hashtagsLine) {
+        content = composeFinalWithLinkAndHashtags(content, linkLine, hashtagsLine);
+      }
+    }
+  }
+} catch (e) {
+  console.warn('Post-process link/hashtags ordering skipped:', e);
+}
+
+.value : "LinkedIn";
   }
   function setChannelUI(ch) {
     $("igAltWrap").style.display = (ch === "Instagram") ? "block" : "none";
@@ -512,3 +530,17 @@
     });
   });
 })();
+
+// --- Helper: enforce link at the end above hashtags (LI/FB) ---
+function composeFinalWithLinkAndHashtags(baseContent, linkLine, hashtagsLine) {
+  const trim = (s) => (s || "").replace(/[ \t]+$/gm, "").trim();
+  const b = trim(baseContent);
+  const link = trim(linkLine);
+  const tags = trim(hashtagsLine);
+  const parts = [];
+  if (b) parts.push(b);
+  if (link) parts.push(link);
+  if (tags) parts.push(tags);
+  return parts.join("\n\n");
+}
+
