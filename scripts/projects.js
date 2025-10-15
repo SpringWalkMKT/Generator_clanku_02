@@ -1,5 +1,6 @@
 // v1.3.0 – přehled uložených projektů/draftů (funkční, bez stylů)
 // Čte SUPABASE_URL/ANON_KEY z window.APP_CONFIG (scripts/config.js)
+// Robustní volání edge funkce `drafts`: POST -> fallback na GET (405).
 
 (function () {
   function resolveSupabaseConfig() {
@@ -22,21 +23,45 @@
     };
   }
 
-  async function callEdge(name, payload) {
+  async function callEdgeDrafts(payload) {
     const { url, key } = resolveSupabaseConfig();
-    const endpoint = `${url}/functions/v1/${name}`;
-    const res = await fetch(endpoint, {
+    const base = `${url}/functions/v1/drafts`;
+    const headers = {
+      "Content-Type": "application/json",
+      ...(key ? { "apikey": key, "Authorization": `Bearer ${key}` } : {})
+    };
+
+    // 1) pokus o POST
+    const resPost = await fetch(base, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(key ? { "apikey": key, "Authorization": `Bearer ${key}` } : {})
-      },
+      headers,
       body: JSON.stringify(payload || {})
     });
-    if (!res.ok) {
-      throw new Error(`${name} ${res.status}: ${await res.text().catch(()=> "")}`);
+
+    // úspěch => vrať JSON
+    if (resPost.ok) return resPost.json().catch(() => ([]));
+
+    // 405 => přepnout na GET s query stringem
+    if (resPost.status === 405) {
+      const qs = new URLSearchParams();
+      if (payload && typeof payload === "object") {
+        Object.entries(payload).forEach(([k, v]) => {
+          if (v === undefined || v === null) return;
+          qs.set(k, String(v));
+        });
+      }
+      const resGet = await fetch(qs.toString() ? `${base}?${qs}` : base, {
+        method: "GET",
+        headers
+      });
+      if (!resGet.ok) {
+        throw new Error(`drafts ${resGet.status}: ${await resGet.text().catch(() => "")}`);
+      }
+      return resGet.json().catch(() => ([]));
     }
-    return res.json().catch(()=> ({}));
+
+    // jiná chyba POSTu
+    throw new Error(`drafts ${resPost.status}: ${await resPost.text().catch(() => "")}`);
   }
 
   function el(tag, attrs = {}, text = "") {
@@ -113,10 +138,10 @@
     status.textContent = "Načítám…";
 
     const filterName = (filter && filter.value || "").trim();
-    const payload = filterName ? { project_name: filterName } : {}; // adaptivně – pokud edge 'drafts' podporuje filtr
+    const payload = filterName ? { project_name: filterName } : {}; // adaptivní filtr (GET/POST)
 
     try {
-      const resp = await callEdge("drafts", payload);
+      const resp = await callEdgeDrafts(payload);
       const items = Array.isArray(resp) ? resp : (Array.isArray(resp?.data) ? resp.data : []);
       renderList(list, items);
       status.textContent = `Nalezeno: ${items.length}`;
