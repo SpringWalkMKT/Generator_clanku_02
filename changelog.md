@@ -8,21 +8,3 @@
 
 
 chore(release): bump to v1.2.0 (Milestone A)
-
-# Changelog
-
-## [1.2.0] – 2025-10-10
-### Added
-- Multi-channel UI (LI/FB/IG/Blog), IG ALT text, Blog struktura.
-- UTM autopreset podle kanálu.
-- CORS pro všechny Edge Functions.
-
-### Fixed
-- Hashtagy (správné čtení z API, #springwalk tail).
-- Shorten zachovává odstavce.
-- Save draft: bezpečné uložení s link_url.
-
-## [1.1.0] – 2025-10-09
-### Added
-- Stabilní MVP LI generování, validace, drafty, presety TOV (multi-select), UTM builder.
-
