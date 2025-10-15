@@ -1,17 +1,30 @@
-// v1.3.0 – přehled uložených projektů/draftů (funkční, bez stylů)
+// v1.3.0 – přehled uložených projektů/draftů (auth fix: čtení z window.APP_CONFIG)
 (function () {
-  function resolveSupabaseConfig() {
-    const fromWin = (k) => (typeof window !== "undefined" && window[k]) ? window[k] : null;
-    return {
-      url: fromWin("SUPABASE_URL") || fromWin("supabaseUrl") || fromWin("__SUPABASE_URL__") || "https://tufuymtiiwlsariamnul.supabase.co",
-      key: fromWin("SUPABASE_ANON_KEY") || fromWin("supabaseAnonKey") || fromWin("__SUPABASE_ANON_KEY__") || ""
-    };
-  }
+  
+function resolveSupabaseConfig() {
+  const w = (typeof window !== "undefined") ? window : {};
+  const app = w.APP_CONFIG || {};
+  const fromWin = (k) => (typeof w !== "undefined" && w[k]) ? w[k] : null;
+  return {
+    url:
+      app.SUPABASE_URL ||
+      fromWin("SUPABASE_URL") ||
+      fromWin("supabaseUrl") ||
+      fromWin("__SUPABASE_URL__") ||
+      "https://tufuymtiiwlsariamnul.supabase.co",
+    key:
+      app.SUPABASE_ANON_KEY ||
+      fromWin("SUPABASE_ANON_KEY") ||
+      fromWin("supabaseAnonKey") ||
+      fromWin("__SUPABASE_ANON_KEY__") ||
+      ""
+  };
+}
+
 
   async function callEdge(name, payload) {
     const { url, key } = resolveSupabaseConfig();
-    const endpoint = `${url}/functions/v1/${name}`;
-    const res = await fetch(endpoint, {
+    const res = await fetch(`${url}/functions/v1/${name}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -89,7 +102,7 @@
     status.textContent = "Načítám…";
 
     const filterName = (filter && filter.value || "").trim();
-    const payload = filterName ? { project_name: filterName } : {}; // adaptivní filtr
+    const payload = filterName ? { project_name: filterName } : {};
 
     try {
       const resp = await callEdge("drafts", payload);
@@ -113,6 +126,5 @@
     load();
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-  else init();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
