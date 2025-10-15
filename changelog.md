@@ -4,3 +4,7 @@
 - Drafty (uložení verzí), načítání draftů
 - Zkracovač na 900 znaků (ponechá odstavce, tagy + link na konci)
 - Suggest-hashtags (3 doporučené) a přidání na konec
+
+
+
+chore(release): bump to v1.2.0 (Milestone A)
